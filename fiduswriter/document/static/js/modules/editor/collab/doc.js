@@ -117,18 +117,21 @@ export class ModCollabDoc {
                 (step, index) => rollbackTr.step(step.invert(unconfirmedTr.docs[unconfirmedTr.docs.length - index - 1]))
             )
             // We reset to there being no local changes to send.
-            this.mod.editor.view.dispatch(receiveTransaction(
-                this.mod.editor.view.state,
-                rollbackTr.steps,
-                rollbackTr.steps.map(_step => this.mod.editor.client_id)
-            ))
+            // this.mod.editor.view.dispatch(receiveTransaction(
+            //     this.mod.editor.view.state,
+            //     rollbackTr.steps,
+            //     rollbackTr.steps.map(_step => this.mod.editor.client_id)
+            // ))
             const toDoc = this.mod.editor.schema.nodeFromJSON({type:'doc', content:[
                 data.doc.contents
             ]})
-            const lostTr = recreateTransform(this.mod.editor.view.state.doc, toDoc)
+            const lostTr = recreateTransform(this.mod.editor.docInfo.confirmedDoc, toDoc)
             let tracked
             let localTr // local steps to be reapplied
             const lostState = EditorState.create({doc: toDoc})
+
+            console.log("Yola STEPS COUNTER::",unconfirmedTr.steps.length ,lostTr.steps.length)
+            
             if (
                 ['write', 'write-tracked'].includes(this.mod.editor.docInfo.access_rights) &&
                 (
@@ -201,7 +204,9 @@ export class ModCollabDoc {
                 lostTr.steps.map(_step => 'remote')
             ))
             this.mod.editor.docInfo.version = data.doc.v
-            this.mod.editor.view.dispatch(rebasedTr)
+            // this.sendToCollaborators()
+            console.log("Are there steps to be sent ?",sendableSteps(this.mod.editor.view.state),rebasedTr)
+            // this.mod.editor.view.dispatch(rebasedTr)
             if (tracked) {
                 showSystemMessage(
                     gettext(
@@ -309,6 +314,7 @@ export class ModCollabDoc {
                 this.mod.editor.mod.db.bibDB.unsentEvents().length ||
                 this.mod.editor.mod.db.imageDB.unsentEvents().length
             ) {
+                console.log("Calling send to collabs")
                 this.disableDiffSending()
                 const stepsToSend = sendableSteps(this.mod.editor.view
                         .state),
