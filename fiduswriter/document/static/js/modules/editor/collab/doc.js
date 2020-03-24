@@ -198,11 +198,16 @@ export class ModCollabDoc {
                     this.mod.editor.mod.db.imageDB.setImage(id, oldImageDB[id])
                 }
             })
-            this.mod.editor.view.dispatch(receiveTransaction(
+
+            const lostOnlineTr = receiveTransaction(
                 this.mod.editor.view.state,
                 lostTr.steps,
                 lostTr.steps.map(_step => 'remote')
-            ))
+            )
+            this.mod.editor.view.dispatch(lostOnlineTr)
+            this.setConfirmedDoc(lostOnlineTr, lostTr.steps.length)
+
+
             this.mod.editor.docInfo.version = data.doc.v
             // this.sendToCollaborators()
             console.log("Are there steps to be sent ?",sendableSteps(this.mod.editor.view.state),rebasedTr)
