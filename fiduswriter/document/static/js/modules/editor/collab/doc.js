@@ -116,12 +116,22 @@ export class ModCollabDoc {
             unconfirmedTr.steps.slice().reverse().forEach(
                 (step, index) => rollbackTr.step(step.invert(unconfirmedTr.docs[unconfirmedTr.docs.length - index - 1]))
             )
+            
+            // Complete rollback properly
+            this.mod.editor.view.dispatch(rollbackTr)
+
             // We reset to there being no local changes to send.
-            // this.mod.editor.view.dispatch(receiveTransaction(
-            //     this.mod.editor.view.state,
-            //     rollbackTr.steps,
-            //     rollbackTr.steps.map(_step => this.mod.editor.client_id)
-            // ))
+            this.mod.editor.view.dispatch(receiveTransaction(
+                this.mod.editor.view.state,
+                rollbackTr.steps,
+                rollbackTr.steps.map(_step => this.mod.editor.client_id)
+            ))
+            this.mod.editor.view.dispatch(receiveTransaction(
+                this.mod.editor.view.state,
+                unconfirmedTr.steps,
+                unconfirmedTr.steps.map(_step => this.mod.editor.client_id)
+            ))
+
             const toDoc = this.mod.editor.schema.nodeFromJSON({type:'doc', content:[
                 data.doc.contents
             ]})
@@ -175,7 +185,7 @@ export class ModCollabDoc {
                     node.content.forEach(subNode => footnoteFind(subNode, usedImages, usedBibs))
                 }
             }
-            rebasedTr.doc.descendants(node => {
+            this.mod.editor.view.state.doc.descendants(node => {
                 if (node.type.name==='citation') {
                     node.attrs.references.forEach(ref => usedBibs.push(parseInt(ref.id)))
                 } else if (node.type.name==='figure' && node.attrs.image) {
@@ -184,6 +194,7 @@ export class ModCollabDoc {
                     node.attrs.footnote.forEach(subNode => footnoteFind(subNode, usedImages, usedBibs))
                 }
             })
+            console.log("IMAGES",usedImages)
             const oldBibDB = this.mod.editor.mod.db.bibDB.db
             this.mod.editor.mod.db.bibDB.setDB(data.doc.bibliography)
             usedBibs.forEach(id => {
@@ -210,8 +221,9 @@ export class ModCollabDoc {
 
             this.mod.editor.docInfo.version = data.doc.v
             // this.sendToCollaborators()
-            console.log("Are there steps to be sent ?",sendableSteps(this.mod.editor.view.state),rebasedTr)
-            // this.mod.editor.view.dispatch(rebasedTr)
+            console.log("Are there steps to be sent ?",sendableSteps(this.mod.editor.view.state))
+            this.mod.editor.view.dispatch(rebasedTr)
+            
             if (tracked) {
                 showSystemMessage(
                     gettext(
