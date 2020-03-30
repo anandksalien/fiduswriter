@@ -146,7 +146,6 @@ export class ModCollabDoc {
             let localTr // local steps to be reapplied
             const lostState = EditorState.create({doc: toDoc})
 
-            console.log("Yola STEPS COUNTER::",unconfirmedTr.steps.length ,lostTr.steps.length)
             
             if (
                 ['write', 'write-tracked'].includes(this.mod.editor.docInfo.access_rights) &&
@@ -170,13 +169,26 @@ export class ModCollabDoc {
                 tracked = false
                 localTr = unconfirmedTr
             }
-            const rebasedTr = lostState.tr.setMeta('remote', true)
-            const maps = rollbackTr.mapping.maps.slice().concat(lostTr.mapping)
-            // const maps = [].concat(lostTr.mapping.maps)
+
+            const lostOnlineTr = receiveTransaction(
+                this.mod.editor.view.state,
+                lostTr.steps,
+                lostTr.steps.map(_step => 'remote')
+            )
+            this.mod.editor.view.dispatch(lostOnlineTr)
+            
+            // this.setConfirmedDoc(lostOnlineTr, lostTr.steps.length)
+            // Set Confirmed DOC
+            this.mod.editor.docInfo.confirmedDoc = lostState.doc
+            this.mod.editor.docInfo.confirmedJson = toMiniJSON(this.mod.editor.docInfo.confirmedDoc.firstChild)
+            
+
+            const rebasedTr = this.mod.editor.view.state.tr.setMeta('remote', true)
+            const maps = [].concat(rollbackTr.mapping.maps.slice()).concat(lostOnlineTr.mapping.maps.slice())
+            
             localTr.steps.forEach(
                 (step, index) => {
                     const mapped = step.map(new Mapping(maps.slice(localTr.steps.length - index )))
-                    console.log("MAPPED",mapped)
                     if (mapped && !rebasedTr.maybeStep(mapped).failed) {
                         maps.push(mapped.getMap())
                     }
@@ -218,19 +230,8 @@ export class ModCollabDoc {
                 }
             })
 
-            const lostOnlineTr = receiveTransaction(
-                this.mod.editor.view.state,
-                lostTr.steps,
-                lostTr.steps.map(_step => 'remote')
-            )
-            this.mod.editor.view.dispatch(lostOnlineTr)
-            this.setConfirmedDoc(lostOnlineTr, lostTr.steps.length)
-
 
             this.mod.editor.docInfo.version = data.doc.v
-            // this.sendToCollaborators()
-            console.log(lostOnlineTr,rebasedTr)
-            console.log("Are there steps to be sent ?",sendableSteps(this.mod.editor.view.state))
             this.mod.editor.view.dispatch(rebasedTr)
             
             if (tracked) {
@@ -376,6 +377,10 @@ export class ModCollabDoc {
                     )
                     // We add a json diff in a format understandable by the
                     // server.
+                    console.log("Confirmed JSON",this.mod.editor.docInfo.confirmedJson)
+                    console.log("The Other ONE!",toMiniJSON(
+                        this.mod.editor.view.state.doc.firstChild
+                    ))
                     unconfirmedDiff['jd'] = compare(
                         this.mod.editor.docInfo.confirmedJson,
                         toMiniJSON(
