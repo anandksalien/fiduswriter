@@ -178,8 +178,7 @@ export class ModCollabDoc {
             this.mod.editor.docInfo.confirmedDoc = lostState.doc
             this.mod.editor.docInfo.confirmedJson = toMiniJSON(this.mod.editor.docInfo.confirmedDoc.firstChild)
             
-
-            const rebasedTr = this.mod.editor.view.state.tr
+            const rebasedTr = this.mod.editor.view.state.tr.setMeta('remote', true)
             let maps = new Mapping([].concat(localTr.mapping.maps.slice().reverse().map(map=>map.invert())).concat(lostTr.mapping.maps.slice()))
             
             localTr.steps.forEach(
