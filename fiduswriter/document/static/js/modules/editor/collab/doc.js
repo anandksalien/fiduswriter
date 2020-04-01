@@ -116,9 +116,6 @@ export class ModCollabDoc {
             unconfirmedTr.steps.slice().reverse().forEach(
                 (step, index) => rollbackTr.step(step.invert(unconfirmedTr.docs[unconfirmedTr.docs.length - index - 1]))
             )
-
-            console.log("Unconfirmed Transaction",unconfirmedTr)
-            console.log("RollbackTransaction",rollbackTr)
             
             // Reset to no local changes
             this.mod.editor.view.dispatch(receiveTransaction(
@@ -177,20 +174,20 @@ export class ModCollabDoc {
             )
             this.mod.editor.view.dispatch(lostOnlineTr)
             
-            // this.setConfirmedDoc(lostOnlineTr, lostTr.steps.length)
             // Set Confirmed DOC
             this.mod.editor.docInfo.confirmedDoc = lostState.doc
             this.mod.editor.docInfo.confirmedJson = toMiniJSON(this.mod.editor.docInfo.confirmedDoc.firstChild)
             
 
-            const rebasedTr = this.mod.editor.view.state.tr.setMeta('remote', true)
-            const maps = [].concat(rollbackTr.mapping.maps.slice()).concat(lostOnlineTr.mapping.maps.slice())
+            const rebasedTr = this.mod.editor.view.state.tr
+            let maps = new Mapping([].concat(localTr.mapping.maps.slice().reverse().map(map=>map.invert())).concat(lostTr.mapping.maps.slice()))
             
             localTr.steps.forEach(
                 (step, index) => {
-                    const mapped = step.map(new Mapping(maps.slice(localTr.steps.length - index )))
+                    const mapped = step.map(maps.slice(localTr.steps.length - index))
                     if (mapped && !rebasedTr.maybeStep(mapped).failed) {
-                        maps.push(mapped.getMap())
+                        maps.appendMap(mapped.getMap())
+                        maps.setMirror(localTr.steps.length-index-1,(localTr.steps.length+lostTr.steps.length+rebasedTr.steps.length-1))
                     }
                 }
             )
