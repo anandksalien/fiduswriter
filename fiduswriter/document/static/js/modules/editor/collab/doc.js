@@ -140,33 +140,7 @@ export class ModCollabDoc {
             ]})
             const lostTr = recreateTransform(this.mod.editor.docInfo.confirmedDoc, toDoc)
             let tracked
-            let localTr // local steps to be reapplied
             const lostState = EditorState.create({doc: toDoc})
-
-            
-            if (
-                ['write', 'write-tracked'].includes(this.mod.editor.docInfo.access_rights) &&
-                (
-                    unconfirmedTr.steps.length > this.trackOfflineLimit ||
-                    lostTr.steps.length > this.remoteTrackOfflineLimit
-                )
-            ) {
-                tracked = true
-                // Either this user has made 50 changes since going offline,
-                // or the document has 20 changes to it. Therefore we add tracking
-                // to the changes of this user and ask user to clean up.
-                localTr = trackedTransaction(
-                    unconfirmedTr,
-                    lostState,
-                    this.mod.editor.user,
-                    false,
-                    Date.now() - this.mod.editor.clientTimeAdjustment
-                )
-            } else {
-                tracked = false
-                localTr = unconfirmedTr
-            }
-
             const lostOnlineTr = receiveTransaction(
                 this.mod.editor.view.state,
                 lostTr.steps,
@@ -178,18 +152,46 @@ export class ModCollabDoc {
             this.mod.editor.docInfo.confirmedDoc = lostState.doc
             this.mod.editor.docInfo.confirmedJson = toMiniJSON(this.mod.editor.docInfo.confirmedDoc.firstChild)
             
-            const rebasedTr = this.mod.editor.view.state.tr.setMeta('remote', true)
-            let maps = new Mapping([].concat(localTr.mapping.maps.slice().reverse().map(map=>map.invert())).concat(lostTr.mapping.maps.slice()))
+            const rebasedTr = this.mod.editor.view.state.tr
+            let maps = new Mapping([].concat(unconfirmedTr.mapping.maps.slice().reverse().map(map=>map.invert())).concat(lostTr.mapping.maps.slice()))
             
-            localTr.steps.forEach(
+            unconfirmedTr.steps.forEach(
                 (step, index) => {
-                    const mapped = step.map(maps.slice(localTr.steps.length - index))
+                    const mapped = step.map(maps.slice(unconfirmedTr.steps.length - index))
                     if (mapped && !rebasedTr.maybeStep(mapped).failed) {
                         maps.appendMap(mapped.getMap())
-                        maps.setMirror(localTr.steps.length-index-1,(localTr.steps.length+lostTr.steps.length+rebasedTr.steps.length-1))
+                        maps.setMirror(unconfirmedTr.steps.length-index-1,(unconfirmedTr.steps.length+lostTr.steps.length+rebasedTr.steps.length-1))
                     }
                 }
             )
+            
+            // Enable/Disable tracked changes based on some conditions
+            let rebasedTrackedTr
+            if (
+                ['write', 'write-tracked'].includes(this.mod.editor.docInfo.access_rights) &&
+                (
+                    unconfirmedTr.steps.length > this.trackOfflineLimit ||
+                    lostTr.steps.length > this.remoteTrackOfflineLimit
+                )
+            ) {
+                tracked = true
+                // Either this user has made 50 changes since going offline,
+                // or the document has 20 changes to it. Therefore we add tracking
+                // to the changes of this user and ask user to clean up.
+                rebasedTrackedTr = trackedTransaction(
+                    rebasedTr,
+                    this.mod.editor.view.state,
+                    this.mod.editor.user,
+                    false,
+                    Date.now() - this.mod.editor.clientTimeAdjustment
+                )
+                rebasedTrackedTr.setMeta('remote',true)
+            } else {
+                tracked = false
+                rebasedTrackedTr = rebasedTr
+            }
+
+
             const usedImages = [],
                 usedBibs = []
             const footnoteFind = (node, usedImages, usedBibs) => {
@@ -237,7 +239,7 @@ export class ModCollabDoc {
 
 
             this.mod.editor.docInfo.version = data.doc.v
-            this.mod.editor.view.dispatch(rebasedTr)
+            this.mod.editor.view.dispatch(rebasedTrackedTr)
             
             if (tracked) {
                 showSystemMessage(
