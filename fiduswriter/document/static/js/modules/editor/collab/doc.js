@@ -7,10 +7,12 @@ import {
 } from "prosemirror-collab"
 import {
     Step,
-    Mapping
+    Mapping,
+    Transform,
+    StepMap
 } from "prosemirror-transform"
 import {
-    EditorState
+    EditorState,Transaction
 } from "prosemirror-state"
 import {
     getSelectionUpdate,
@@ -33,6 +35,9 @@ import {
 import {
     trackedTransaction
 } from "../track"
+import {
+    ChangeSet
+} from 'prosemirror-changeset'
 
 export class ModCollabDoc {
     constructor(mod) {
@@ -105,6 +110,75 @@ export class ModCollabDoc {
         }
     }
 
+    trDoc(tr, index = 0) {
+        return tr.docs.length > index ? tr.docs[index] : tr.doc
+    }
+    
+    findConflicts(tr1, tr2) {
+        const changes1 = this.findContentChanges(tr1),
+            changes2 = this.findContentChanges(tr2),
+            conflicts = []
+        
+        console.log("Changes1",changes1)
+        console.log("Changes2",changes2)
+
+        changes1.deleted.forEach(deleted => {
+            changes2.inserted.forEach(inserted => {
+                if (inserted.pos >= deleted.from && inserted.pos <= deleted.to) {
+                    conflicts.push([deleted.data.step,"deletion",inserted.data.step,"insertion"])
+                }
+            })
+        })
+    
+        changes2.deleted.forEach(deleted => {
+            changes1.inserted.forEach(inserted => {
+                if (inserted.pos >= deleted.from && inserted.pos <= deleted.to) {
+                    conflicts.push([inserted.data.step,"insertion",deleted.data.step,"deletion"])
+                }
+            })
+        })
+    
+        // changes1.inserted.forEach(inserted1 => {
+        //     changes2.inserted.forEach(inserted2 => {
+        //         if (inserted1.pos === inserted2.pos) {
+        //             conflicts.push([inserted1.data.step, inserted2.data.step])
+        //         }
+        //     })
+        // })
+    
+        // changes1.deleted.forEach(deleted1 => {
+        //     changes2.deleted.forEach(deleted2 => {
+        //         if (
+        //             (deleted1.from >= deleted2.from && deleted1.from <= deleted2.to) ||
+        //             (deleted1.to >= deleted2.from && deleted1.to <= deleted2.to) ||
+        //             (deleted1.from <= deleted2.from && deleted1.to >= deleted2.to) ||
+        //             (deleted2.from <= deleted1.from && deleted2.to >= deleted1.to)
+        //         ) {
+        //             conflicts.push([deleted1.data.step, deleted2.data.step])
+        //         }
+        //     })
+        // })
+    
+        return conflicts
+    }
+    
+    findContentChanges(tr) {
+        const doc = this.trDoc(tr)
+        let changes = ChangeSet.create(doc, {compare: (a, b) => false})
+        tr.steps.forEach((step, index) => {
+            const doc = this.trDoc(tr, index + 1)
+            changes = changes.addSteps(doc, [tr.mapping.maps[index]], {step: index})
+        })
+        const invertedMapping = new Mapping()
+        invertedMapping.appendMappingInverted(tr.mapping)
+
+        console.log("HEY",JSON.parse(JSON.stringify(changes)))
+        const inserted = changes.inserted.map(inserted => ({pos: invertedMapping.map(inserted.from), data: inserted.data}))
+        const deleted = changes.deleted.map(deleted => ({from: deleted.from, to: deleted.to, data: deleted.data}))
+    
+        return {inserted, deleted}
+    }
+
     adjustDocument(data) {
         // Adjust the document when reconnecting after offline and many changes
         // happening on server.
@@ -116,6 +190,8 @@ export class ModCollabDoc {
             unconfirmedTr.steps.slice().reverse().forEach(
                 (step, index) => rollbackTr.step(step.invert(unconfirmedTr.docs[unconfirmedTr.docs.length - index - 1]))
             )
+
+            console.log("Unconfirmed steps",unconfirmedTr)
             
             // Reset to no local changes
             this.mod.editor.view.dispatch(receiveTransaction(
@@ -151,19 +227,99 @@ export class ModCollabDoc {
             // Set Confirmed DOC
             this.mod.editor.docInfo.confirmedDoc = lostState.doc
             this.mod.editor.docInfo.confirmedJson = toMiniJSON(this.mod.editor.docInfo.confirmedDoc.firstChild)
+            console.log("Lost online",lostTr)  
+            // Find the conflicting steps          
+            let conflicts = this.findConflicts(unconfirmedTr,lostOnlineTr)
+            console.log(conflicts)
+
+
+            let rollbackOnlineConflictDeletionTr = this.mod.editor.view.state.tr
+            let onlineConflictingDeltionIndex = [] , OnlineDeletionSteps = [] , offlineConflictingDeletionIndex = [] 
+
+            // Store the indexes of conflicting deletion steps
+            conflicts.forEach(conflict=>{
+                if(!offlineConflictingDeletionIndex.includes(conflict[0]) && conflict[1] == "deletion"){
+                    offlineConflictingDeletionIndex.push(conflict[0])
+                }
+                if(!onlineConflictingDeltionIndex.includes(conflict[2]) && conflict[3] == "deletion"){
+                    onlineConflictingDeltionIndex.push(conflict[2])
+                }
+            })
+
+            // Rollback the online conflicting steps
+            onlineConflictingDeltionIndex.sort(function(a, b){return a - b})
+            onlineConflictingDeltionIndex.reverse()
+            lostOnlineTr.steps.forEach((step,index)=>{
+                onlineConflictingDeltionIndex.forEach(conflict=>{
+                    if(index == conflict){
+                        console.log("STEP",step,step.invert(lostOnlineTr.docs[index]))
+                        if(!rollbackOnlineConflictDeletionTr.maybeStep(step.invert(lostOnlineTr.docs[index]).map(rollbackOnlineConflictDeletionTr.mapping)).failed){
+                            OnlineDeletionSteps.push(step.map(rollbackOnlineConflictDeletionTr.mapping.slice(0,rollbackOnlineConflictDeletionTr.steps.length-1)))
+                        } else {
+                            const arr_index = onlineConflictingDeltionIndex.indexOf(index)
+                            delete onlineConflictingDeltionIndex[arr_index]
+                        }
+                    }
+                })
+            })
+            console.log(rollbackOnlineConflictDeletionTr)
+            this.mod.editor.view.dispatch(rollbackOnlineConflictDeletionTr)
             
             const rebasedTr = this.mod.editor.view.state.tr
-            let maps = new Mapping([].concat(unconfirmedTr.mapping.maps.slice().reverse().map(map=>map.invert())).concat(lostTr.mapping.maps.slice()))
+            let modifiedOnlineStepMaps = [] 
+            let offset = 0
+
+            // Modify the steps maps as we re-introduced the conflicting deletion.
+            lostOnlineTr.mapping.maps.slice().map((map,index)=>{
+                if(onlineConflictingDeltionIndex.includes(index)){
+                    if(map.ranges.length>0 && map.ranges[1]>map.ranges[2]){
+                        offset+=(map.ranges[1]-map.ranges[2])
+                        map.ranges = []
+                    }
+                } else {
+                    if(map.ranges.length>0)map.ranges[0]+=parseInt(offset)
+                    modifiedOnlineStepMaps.push(map)
+                }
+            })
+
+            // let maps = new Mapping([].concat(unconfirmedTr.mapping.maps.slice().reverse().map(map=>map.invert())).concat(lostOnlineTr.mapping.maps.slice().filter((map,index)=> !(z.includes(index) && (map.ranges.length>0 && map.ranges[1]>map.ranges[2])))))
+            let maps = new Mapping([].concat(unconfirmedTr.mapping.maps.slice().reverse().map(map=>map.invert())).concat(modifiedOnlineStepMaps))
+            // let maps2 = new Mapping([].concat(unconfirmedTr.mapping.maps.slice().reverse().map(map=>map.invert())).concat(lostOnlineTr.mapping.maps.slice()))
+            // map((map,index)=>{
+            //     if(z.includes(index)){
+            //         if(map.ranges.length>0 && map.ranges[1]>map.ranges[2]){
+            //             map.ranges = []
+            //         }
+            //     }
+            //     return map
+            // })))
             
+            console.log(JSON.parse(JSON.stringify(maps)))
+            let offlineconflictdeletion = []
             unconfirmedTr.steps.forEach(
                 (step, index) => {
-                    const mapped = step.map(maps.slice(unconfirmedTr.steps.length - index))
-                    if (mapped && !rebasedTr.maybeStep(mapped).failed) {
-                        maps.appendMap(mapped.getMap())
-                        maps.setMirror(unconfirmedTr.steps.length-index-1,(unconfirmedTr.steps.length+lostTr.steps.length+rebasedTr.steps.length-1))
+                    if(offlineConflictingDeletionIndex.includes(index)) {
+                        console.log("MAPS:",maps.slice(unconfirmedTr.steps.length - index))
+                        offlineconflictdeletion.push(step.map(maps.slice(unconfirmedTr.steps.length-index)))
+                        console.log("assa",step.map(maps.slice(unconfirmedTr.steps.length - index)))
+                        console.log("FROM",step.from,maps.slice(unconfirmedTr.steps.length - index).map(step.from))
+                        console.log("TO",step.to,maps.slice(unconfirmedTr.steps.length - index).map(step.to))
+                        // zzindex.push()
+                    } else {
+                        console.log("MAPS:",maps.slice(unconfirmedTr.steps.length - index))
+                        const mapped = step.map(maps.slice(unconfirmedTr.steps.length - index))
+                        console.log(mapped)
+                        if (mapped && !rebasedTr.maybeStep(mapped).failed) {
+                            maps.appendMap(mapped.getMap())
+                            maps.setMirror(unconfirmedTr.steps.length-index-1,(unconfirmedTr.steps.length+lostOnlineTr.steps.length-rollbackOnlineConflictDeletionTr.steps.length+rebasedTr.steps.length-1))
+                        }
                     }
+
                 }
             )
+
+            console.log("ZZZ",offlineconflictdeletion)
+            console.log("rebasedTr",rebasedTr)
             
             // Enable/Disable tracked changes based on some conditions
             let rebasedTrackedTr
@@ -240,6 +396,59 @@ export class ModCollabDoc {
 
             this.mod.editor.docInfo.version = data.doc.v
             this.mod.editor.view.dispatch(rebasedTrackedTr)
+
+            let OnlineDeletionTr = this.mod.editor.view.state.tr
+            OnlineDeletionSteps.forEach(step=>{
+                const updatedMapping = rebasedTrackedTr.mapping
+                updatedMapping.appendMapping(OnlineDeletionTr.mapping)
+                OnlineDeletionTr.step(step.map(updatedMapping))
+            })
+
+
+            let onlineDeletionTrackedTr = trackedTransaction(
+                OnlineDeletionTr,
+                this.mod.editor.view.state,
+                this.mod.editor.user,
+                false,
+                Date.now() - this.mod.editor.clientTimeAdjustment
+            )
+            onlineDeletionTrackedTr.setMeta('remote',true)
+            this.mod.editor.view.dispatch(onlineDeletionTrackedTr)
+            console.log("G:",OnlineDeletionTr)
+            console.log("X:",onlineDeletionTrackedTr)
+            
+            // let gg = this.mod.editor.view.state.tr
+            // zzz.reverse().forEach(step=>{
+            //     console.log("ZZZ:",step[0].invert(rebasedTr.docs[step[1]]).map(rebasedTr.mapping))
+            //     gg.step(step[0].invert(rebasedTr.docs[step[1]]))
+            // })
+            // this.mod.editor.view.dispatch(gg)
+
+            let offlineDeletion = this.mod.editor.view.state.tr
+            offlineconflictdeletion.forEach(step=>{
+                offlineDeletion.step(step.map(offlineDeletion.mapping))
+            })
+            console.log("YY:",offlineDeletion)
+            let offlineDeletionTr = trackedTransaction(
+                offlineDeletion,
+                this.mod.editor.view.state,
+                this.mod.editor.user,
+                false,
+                Date.now() - this.mod.editor.clientTimeAdjustment
+            )
+            offlineDeletionTr.setMeta('remote',true)
+            console.log("XX:",offlineDeletionTr)
+            this.mod.editor.view.dispatch(offlineDeletionTr)
+            
+
+            // let yo = this.mod.editor.view.state.tr.setMeta('remote',true)
+            // conflicts.forEach(conflict=>{
+            //     if(conflict[3] == "insertion"){
+            //         let xo = lostOnlineTr.steps[conflict[2]]
+            //         yo.step(xo.map(rebasedTrackedTr.mapping))
+            //     }
+            // })
+            // this.mod.editor.view.dispatch(yo)
             
             if (tracked) {
                 showSystemMessage(
