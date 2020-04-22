@@ -33,10 +33,10 @@ import {
     recreateTransform
 } from "./recreate_transform"
 import {
-    trackedTransaction
+    trackedTransaction,acceptAll
 } from "../track"
 import {
-    ChangeSet
+    ChangeSet,simplifyChanges
 } from 'prosemirror-changeset'
 
 export class ModCollabDoc {
@@ -115,56 +115,36 @@ export class ModCollabDoc {
     }
     
     findConflicts(tr1, tr2) {
-        const changes1 = this.findContentChanges(tr1),
-            changes2 = this.findContentChanges(tr2),
-            conflicts = []
+        let changes1 , changes2 , conflicts = []
+        changes1 = this.findContentChanges(tr1)
+        changes2 = this.findContentChanges(tr2)
         
         console.log("Changes1",changes1)
         console.log("Changes2",changes2)
 
-        changes1.deleted.forEach(deleted => {
-            changes2.inserted.forEach(inserted => {
+        changes1.deletedsteps.forEach(deleted => {
+            changes2.insertedsteps.forEach(inserted => {
                 if (inserted.pos >= deleted.from && inserted.pos <= deleted.to) {
+                    if(!conflicts.includes([deleted.data.step,"deletion",inserted.data.step,"insertion"]))
                     conflicts.push([deleted.data.step,"deletion",inserted.data.step,"insertion"])
                 }
             })
         })
     
-        changes2.deleted.forEach(deleted => {
-            changes1.inserted.forEach(inserted => {
+        changes2.deletedsteps.forEach(deleted => {
+            changes1.insertedsteps.forEach(inserted => {
                 if (inserted.pos >= deleted.from && inserted.pos <= deleted.to) {
+                    if(!conflicts.includes([inserted.data.step,"insertion",deleted.data.step,"deletion"]))
                     conflicts.push([inserted.data.step,"insertion",deleted.data.step,"deletion"])
                 }
             })
         })
-    
-        // changes1.inserted.forEach(inserted1 => {
-        //     changes2.inserted.forEach(inserted2 => {
-        //         if (inserted1.pos === inserted2.pos) {
-        //             conflicts.push([inserted1.data.step, inserted2.data.step])
-        //         }
-        //     })
-        // })
-    
-        // changes1.deleted.forEach(deleted1 => {
-        //     changes2.deleted.forEach(deleted2 => {
-        //         if (
-        //             (deleted1.from >= deleted2.from && deleted1.from <= deleted2.to) ||
-        //             (deleted1.to >= deleted2.from && deleted1.to <= deleted2.to) ||
-        //             (deleted1.from <= deleted2.from && deleted1.to >= deleted2.to) ||
-        //             (deleted2.from <= deleted1.from && deleted2.to >= deleted1.to)
-        //         ) {
-        //             conflicts.push([deleted1.data.step, deleted2.data.step])
-        //         }
-        //     })
-        // })
-    
         return conflicts
     }
     
     findContentChanges(tr) {
         const doc = this.trDoc(tr)
-        let changes = ChangeSet.create(doc, {compare: (a, b) => false})
+        let changes = ChangeSet.create(doc)
         tr.steps.forEach((step, index) => {
             const doc = this.trDoc(tr, index + 1)
             changes = changes.addSteps(doc, [tr.mapping.maps[index]], {step: index})
@@ -172,11 +152,16 @@ export class ModCollabDoc {
         const invertedMapping = new Mapping()
         invertedMapping.appendMappingInverted(tr.mapping)
 
-        console.log("HEY",JSON.parse(JSON.stringify(changes)))
-        const inserted = changes.inserted.map(inserted => ({pos: invertedMapping.map(inserted.from), data: inserted.data}))
-        const deleted = changes.deleted.map(deleted => ({from: deleted.from, to: deleted.to, data: deleted.data}))
-    
-        return {inserted, deleted}
+        console.log("HEY",changes)
+        const insertedsteps = []
+        changes.changes.forEach(change=>{
+            change.inserted.forEach(inserted=>insertedsteps.push({pos: invertedMapping.map(change.fromB), data: inserted.data}))
+        })
+        const deletedsteps = []
+        changes.changes.forEach(change => {
+            change.deleted.forEach(deleted=>deletedsteps.push({from: change.fromA, to: change.toA, data: deleted.data}))
+        })
+        return {insertedsteps, deletedsteps}
     }
 
     adjustDocument(data) {
@@ -228,13 +213,40 @@ export class ModCollabDoc {
             this.mod.editor.docInfo.confirmedDoc = lostState.doc
             this.mod.editor.docInfo.confirmedJson = toMiniJSON(this.mod.editor.docInfo.confirmedDoc.firstChild)
             console.log("Lost online",lostTr)  
+            
+            // Try to condense the offline steps
+            let start_step = unconfirmedTr.steps[0]
+            // start_step.structure = true
+            let mergedStep = start_step
+            let condensedSteps = [] , x = mergedStep
+            // condensedSteps.push(mergedStep)
+            for(let i =1 ;i<unconfirmedTr.steps.length ; i++){
+                // unconfirmedTr.steps[i].structure = true
+                mergedStep = mergedStep.merge(unconfirmedTr.steps[i])
+                // console.log("Wohooo",i,unconfirmedTr.steps[i],mergedStep)
+                if(mergedStep === null){
+                    condensedSteps.push(x)
+                    mergedStep = unconfirmedTr.steps[i]
+                    x = mergedStep
+                } else {
+                    x = mergedStep
+                }
+            }
+            condensedSteps.push(mergedStep)
+            
+            const unconfirmedCondensedTr = confirmedState.tr
+            condensedSteps.forEach(step=>unconfirmedCondensedTr.step(step))
+
+            console.log("Condensed Steps",condensedSteps)
+            console.log("Condensed Tr", unconfirmedCondensedTr)
+
             // Find the conflicting steps          
-            let conflicts = this.findConflicts(unconfirmedTr,lostOnlineTr)
+            let conflicts = this.findConflicts(unconfirmedCondensedTr,lostOnlineTr)
             console.log(conflicts)
 
 
             let rollbackOnlineConflictDeletionTr = this.mod.editor.view.state.tr
-            let onlineConflictingDeltionIndex = [] , OnlineDeletionSteps = [] , offlineConflictingDeletionIndex = [] 
+            let onlineConflictingDeltionIndex = [] , OnlineDeletionSteps = [] , offlineConflictingDeletionIndex = []  , offlineConflictingInsertionIndex= []
 
             // Store the indexes of conflicting deletion steps
             conflicts.forEach(conflict=>{
@@ -243,6 +255,9 @@ export class ModCollabDoc {
                 }
                 if(!onlineConflictingDeltionIndex.includes(conflict[2]) && conflict[3] == "deletion"){
                     onlineConflictingDeltionIndex.push(conflict[2])
+                }
+                if(!offlineConflictingInsertionIndex.includes(conflict[0]) && conflict[1] == "insertion"){
+                    offlineConflictingInsertionIndex.push(conflict[0])
                 }
             })
 
@@ -283,7 +298,7 @@ export class ModCollabDoc {
             })
 
             // let maps = new Mapping([].concat(unconfirmedTr.mapping.maps.slice().reverse().map(map=>map.invert())).concat(lostOnlineTr.mapping.maps.slice().filter((map,index)=> !(z.includes(index) && (map.ranges.length>0 && map.ranges[1]>map.ranges[2])))))
-            let maps = new Mapping([].concat(unconfirmedTr.mapping.maps.slice().reverse().map(map=>map.invert())).concat(modifiedOnlineStepMaps))
+            let maps = new Mapping([].concat(unconfirmedCondensedTr.mapping.maps.slice().reverse().map(map=>map.invert())).concat(modifiedOnlineStepMaps))
             // let maps2 = new Mapping([].concat(unconfirmedTr.mapping.maps.slice().reverse().map(map=>map.invert())).concat(lostOnlineTr.mapping.maps.slice()))
             // map((map,index)=>{
             //     if(z.includes(index)){
@@ -295,23 +310,26 @@ export class ModCollabDoc {
             // })))
             
             console.log(JSON.parse(JSON.stringify(maps)))
-            let offlineconflictdeletion = []
-            unconfirmedTr.steps.forEach(
+            let offlineconflictdeletion = [] , offlineConflictInsertion = []
+            unconfirmedCondensedTr.steps.forEach(
                 (step, index) => {
                     if(offlineConflictingDeletionIndex.includes(index)) {
-                        console.log("MAPS:",maps.slice(unconfirmedTr.steps.length - index))
-                        offlineconflictdeletion.push(step.map(maps.slice(unconfirmedTr.steps.length-index)))
-                        console.log("assa",step.map(maps.slice(unconfirmedTr.steps.length - index)))
-                        console.log("FROM",step.from,maps.slice(unconfirmedTr.steps.length - index).map(step.from))
-                        console.log("TO",step.to,maps.slice(unconfirmedTr.steps.length - index).map(step.to))
+                        console.log("MAPS:",maps.slice(unconfirmedCondensedTr.steps.length - index))
+                        offlineconflictdeletion.push(step.map(maps.slice(unconfirmedCondensedTr.steps.length-index)))
+                        console.log("assa",step.map(maps.slice(unconfirmedCondensedTr.steps.length - index)))
+                        console.log("FROM",step.from,maps.slice(unconfirmedCondensedTr.steps.length - index).map(step.from))
+                        console.log("TO",step.to,maps.slice(unconfirmedCondensedTr.steps.length - index).map(step.to))
                         // zzindex.push()
                     } else {
-                        console.log("MAPS:",maps.slice(unconfirmedTr.steps.length - index))
-                        const mapped = step.map(maps.slice(unconfirmedTr.steps.length - index))
+                        console.log("MAPS:",maps.slice(unconfirmedCondensedTr.steps.length - index))
+                        const mapped = step.map(maps.slice(unconfirmedCondensedTr.steps.length - index))
+                        if(offlineConflictingInsertionIndex.includes(index) && mapped) {
+                            offlineConflictInsertion.push(mapped)
+                        }
                         console.log(mapped)
                         if (mapped && !rebasedTr.maybeStep(mapped).failed) {
                             maps.appendMap(mapped.getMap())
-                            maps.setMirror(unconfirmedTr.steps.length-index-1,(unconfirmedTr.steps.length+lostOnlineTr.steps.length-rollbackOnlineConflictDeletionTr.steps.length+rebasedTr.steps.length-1))
+                            maps.setMirror(unconfirmedCondensedTr.steps.length-index-1,(unconfirmedCondensedTr.steps.length+lostOnlineTr.steps.length-rollbackOnlineConflictDeletionTr.steps.length+rebasedTr.steps.length-1))
                         }
                     }
 
@@ -397,6 +415,18 @@ export class ModCollabDoc {
             this.mod.editor.docInfo.version = data.doc.v
             this.mod.editor.view.dispatch(rebasedTrackedTr)
 
+            // Now accept all tracked insertions that are conflicting because when we have tracked delete on top the tracked insertions get deleted.
+            console.log("OFfline insertions",offlineConflictInsertion)
+            offlineConflictInsertion.forEach(step=>{
+                if(step.from == step.to){
+                    acceptAll(this.mod.editor.view,step.from,step.from+step.slice.size)
+                }
+                else {
+                    acceptAll(this.mod.editor.view,step.from,step.to)
+                }
+            })
+
+
             let OnlineDeletionTr = this.mod.editor.view.state.tr
             OnlineDeletionSteps.forEach(step=>{
                 const updatedMapping = rebasedTrackedTr.mapping
@@ -428,6 +458,7 @@ export class ModCollabDoc {
             offlineconflictdeletion.forEach(step=>{
                 offlineDeletion.step(step.map(offlineDeletion.mapping))
             })
+            
             console.log("YY:",offlineDeletion)
             let offlineDeletionTr = trackedTransaction(
                 offlineDeletion,
@@ -719,6 +750,8 @@ export class ModCollabDoc {
     }
 
     receiveFromCollaborators(data) {
+        console.log("Server",data)
+
         this.mod.editor.docInfo.version++
         if (data["bu"]) { // bibliography updates
             this.mod.editor.mod.db.bibDB.receive(data["bu"])

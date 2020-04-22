@@ -27,6 +27,6 @@
         "sortablejs": "1.8.x",
         "rfc6902": "^3.0.4",
         "diff": "^4.0.2",
-        "prosemirror-changeset": "1.2.0"
+        "prosemirror-changeset": "2.1.2"
     }
 }
