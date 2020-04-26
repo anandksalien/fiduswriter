@@ -272,8 +272,6 @@ export class ModCollabDoc {
                 if(onlineConflictingDeltionIndex.includes(index)){
                     console.log("STEP",step,step.invert(lostOnlineTr.docs[index]))
                     if(!rollbackOnlineConflictDeletionTr.maybeStep(step.invert(lostOnlineTr.docs[index]).map(rollbackOnlineConflictDeletionTr.mapping)).failed){
-                        console.log("Mapped Step",step.map(rollbackOnlineConflictDeletionTr.mapping.slice(0,rollbackOnlineConflictDeletionTr.steps.length-1)))
-                        // OnlineDeletionSteps.push(step)
                         OnlineDeletionSteps.push(step.map(rollbackOnlineConflictDeletionTr.mapping.slice(0,rollbackOnlineConflictDeletionTr.steps.length-1)))
                     } else {
                         const arr_index = onlineConflictingDeltionIndex.indexOf(index)
@@ -303,7 +301,7 @@ export class ModCollabDoc {
 
             let maps = new Mapping([].concat(unconfirmedCondensedTr.mapping.maps.slice().reverse().map(map=>map.invert())).concat(modifiedOnlineStepMaps))            
             console.log(JSON.parse(JSON.stringify(maps)),Object.keys(offlineConflictingInsertionIndex))
-            let offlineconflictdeletion = [] , offlineConflictInsertion = []
+            let offlineconflictdeletion = [] , DeletionMapping  = new Mapping()
             unconfirmedCondensedTr.steps.forEach(
                 (step, index) => {
                     if(offlineConflictingDeletionIndex.includes(index)) {
@@ -311,13 +309,21 @@ export class ModCollabDoc {
                     } else {
                         console.log("MAPS:",maps.slice(unconfirmedCondensedTr.steps.length - index))
                         const mapped = step.map(maps.slice(unconfirmedCondensedTr.steps.length - index))
-                        // if(Object.keys(offlineConflictingInsertionIndex).includes(String(index))){
-                        //     console.log("FROMTO",maps.slice(unconfirmedCondensedTr.steps.length - index).map(offlineConflictingInsertionIndex[index].from))
-                        //     offlineConflictingInsertionIndex[index].from = maps.slice(unconfirmedCondensedTr.steps.length - index).map(offlineConflictingInsertionIndex[index].from)
-                        // }
+                        if(Object.keys(offlineConflictingInsertionIndex).includes(String(index))){
+                            console.log("FROMTO",maps.slice(unconfirmedCondensedTr.steps.length - index).map(offlineConflictingInsertionIndex[index].from))
+                            offlineConflictingInsertionIndex[index].from = maps.slice(unconfirmedCondensedTr.steps.length - index).map(offlineConflictingInsertionIndex[index].from)
+                        }
                         console.log(mapped)
                         if (mapped && !rebasedTr.maybeStep(mapped).failed) {
+                            const currentStepMap = mapped.getMap() 
                             maps.appendMap(mapped.getMap())
+                            console.log("CR",currentStepMap)
+                            if(currentStepMap.ranges.length>0 && currentStepMap.ranges[1]>currentStepMap.ranges[2]){
+                                const y = currentStepMap.ranges[2]
+                                currentStepMap.ranges[2] = currentStepMap.ranges[1]
+                                currentStepMap.ranges[1] = y
+                                DeletionMapping.appendMap(currentStepMap)
+                            }
                             maps.setMirror(unconfirmedCondensedTr.steps.length-index-1,(unconfirmedCondensedTr.steps.length+lostOnlineTr.steps.length-rollbackOnlineConflictDeletionTr.steps.length+rebasedTr.steps.length-1))
                         }
                     }
@@ -408,21 +414,18 @@ export class ModCollabDoc {
             // Now accept all tracked insertions that are conflicting because when we have tracked delete on top the tracked insertions get deleted.
             console.log("OFfline insertions",offlineConflictingInsertionIndex)
             Object.keys(offlineConflictingInsertionIndex).forEach((index)=>{
-                console.log("SD",index,offlineConflictingInsertionIndex[index])
-                const ff = new Mapping(rebasedTrackedTr.mapping.maps.slice(0,rebasedTr.steps.length))
-                const yy = ff.map(offlineConflictingInsertionIndex[index].from)
-                console.log("YTY",yy)
-                acceptAll(this.mod.editor.view,yy,yy+offlineConflictingInsertionIndex[index].len)
+                let from = offlineConflictingInsertionIndex[index].from
+                console.log("DM",DeletionMapping)
+                if(tracked)
+                    from = DeletionMapping.map(from)         
+                console.log("FROMMP",from)       
+                acceptAll(this.mod.editor.view,from,from+offlineConflictingInsertionIndex[index].len)
             })
 
             let OnlineDeletionTr = this.mod.editor.view.state.tr
             OnlineDeletionSteps.forEach(step=>{
-                console.log("OD:",step)
                 const updatedMapping = new Mapping(rebasedTrackedTr.mapping.maps.slice(0,rebasedTr.steps.length))
-                console.log("POM:",step.map(updatedMapping) , step.map(rebasedTr.mapping))
                 updatedMapping.appendMapping(OnlineDeletionTr.mapping)
-                console.log("UM",updatedMapping)
-                console.log("SOD",step.map(updatedMapping))
                 OnlineDeletionTr.step(step.map(updatedMapping))
             })
 
