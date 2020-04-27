@@ -44,7 +44,7 @@ export class ModCollabDoc {
         this.awaitingDiffResponse = false
         this.receiving = false
         this.currentlyCheckingVersion = false
-
+        this.footnoteRender = false
         this.trackOfflineLimit = 50 // Limit of local changes while offline for tracking to kick in when multiple users edit
         this.remoteTrackOfflineLimit = 20 // Limit of remote changes while offline for tracking to kick in when multiple users edit
     }
@@ -134,6 +134,8 @@ export class ModCollabDoc {
                 rollbackTr.steps.map(_step => this.mod.editor.client_id)
             ))
             
+            //Update the footnote editor state
+            this.mod.editor.mod.footnotes.fnEditor.renderAllFootnotes()
 
             const toDoc = this.mod.editor.schema.nodeFromJSON({type:'doc', content:[
                 data.doc.contents
@@ -428,6 +430,10 @@ export class ModCollabDoc {
                         s => s.toJSON()
                     )
                 }
+                if(this.footnoteRender) {
+                    unconfirmedDiff['footnoterender'] = true
+                    this.footnoteRender = false
+                }
                 if (commentUpdates.length) {
                     unconfirmedDiff["cu"] = commentUpdates
                 }
@@ -526,7 +532,9 @@ export class ModCollabDoc {
         if (data["fs"]) { // footnote steps
             this.mod.editor.mod.footnotes.fnEditor.applyDiffs(data["fs"], data["cid"])
         }
-
+        if(data["footnoterender"]){ // re-render footnotes properly
+            this.mod.editor.mod.footnotes.fnEditor.renderAllFootnotes()
+        }
         if (data.server_fix) {
             // Diff is a fix created by server due to missing diffs.
             if ('reject_request_id' in data) {
