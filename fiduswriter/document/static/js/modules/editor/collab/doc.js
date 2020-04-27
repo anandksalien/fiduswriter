@@ -169,6 +169,25 @@ export class ModCollabDoc {
         return {insertedsteps, deletedsteps}
     }
 
+    simplifyTransaction(tr){
+        let start_step = tr.steps[0]
+        let mergedStep = start_step
+        let condensedSteps = [] , lastSuccessfulMerge = mergedStep
+        for(let i =1 ;i<tr.steps.length ; i++){
+            mergedStep = mergedStep.merge(tr.steps[i])
+            if(mergedStep === null){
+                condensedSteps.push(lastSuccessfulMerge)
+                mergedStep = tr.steps[i]
+                lastSuccessfulMerge = mergedStep
+            } else {
+                lastSuccessfulMerge = mergedStep
+            }
+        }
+        condensedSteps.push(mergedStep)
+        return condensedSteps
+    }
+
+
     adjustDocument(data) {
         // Adjust the document when reconnecting after offline and many changes
         // happening on server.
@@ -220,25 +239,7 @@ export class ModCollabDoc {
             console.log("Lost online",lostTr)  
             
             // Try to condense the offline steps
-            let start_step = unconfirmedTr.steps[0]
-            // start_step.structure = true
-            let mergedStep = start_step
-            let condensedSteps = [] , x = mergedStep
-            // condensedSteps.push(mergedStep)
-            for(let i =1 ;i<unconfirmedTr.steps.length ; i++){
-                // unconfirmedTr.steps[i].structure = true
-                mergedStep = mergedStep.merge(unconfirmedTr.steps[i])
-                // console.log("Wohooo",i,unconfirmedTr.steps[i],mergedStep)
-                if(mergedStep === null){
-                    condensedSteps.push(x)
-                    mergedStep = unconfirmedTr.steps[i]
-                    x = mergedStep
-                } else {
-                    x = mergedStep
-                }
-            }
-            condensedSteps.push(mergedStep)
-            
+            const condensedSteps = this.simplifyTransaction(unconfirmedTr)
             const unconfirmedCondensedTr = confirmedState.tr
             condensedSteps.forEach(step=>unconfirmedCondensedTr.step(step))
 
@@ -249,10 +250,8 @@ export class ModCollabDoc {
             let conflicts = this.findConflicts(unconfirmedCondensedTr,lostOnlineTr)
             console.log(JSON.parse(JSON.stringify(conflicts)))
 
-
             let rollbackOnlineConflictDeletionTr = this.mod.editor.view.state.tr
             let onlineConflictingDeltionIndex = [] , OnlineDeletionSteps = [] , offlineConflictingDeletionIndex = []  , offlineConflictingInsertionIndex= {}
-
 
             // Store the indexes of conflicting deletion steps
             conflicts.forEach(conflict=>{
@@ -300,24 +299,19 @@ export class ModCollabDoc {
             })
 
             let maps = new Mapping([].concat(unconfirmedCondensedTr.mapping.maps.slice().reverse().map(map=>map.invert())).concat(modifiedOnlineStepMaps))            
-            console.log(JSON.parse(JSON.stringify(maps)),Object.keys(offlineConflictingInsertionIndex))
             let offlineconflictdeletion = [] , DeletionMapping  = new Mapping()
             unconfirmedCondensedTr.steps.forEach(
                 (step, index) => {
-                    if(offlineConflictingDeletionIndex.includes(index)) {
-                        offlineconflictdeletion.push(step.map(maps.slice(unconfirmedCondensedTr.steps.length-index)))
+                    const mapped = step.map(maps.slice(unconfirmedCondensedTr.steps.length - index))
+                    if(offlineConflictingDeletionIndex.includes(index) && mapped) {
+                        offlineconflictdeletion.push(mapped)
                     } else {
-                        console.log("MAPS:",maps.slice(unconfirmedCondensedTr.steps.length - index))
-                        const mapped = step.map(maps.slice(unconfirmedCondensedTr.steps.length - index))
                         if(Object.keys(offlineConflictingInsertionIndex).includes(String(index))){
-                            console.log("FROMTO",maps.slice(unconfirmedCondensedTr.steps.length - index).map(offlineConflictingInsertionIndex[index].from))
                             offlineConflictingInsertionIndex[index].from = maps.slice(unconfirmedCondensedTr.steps.length - index).map(offlineConflictingInsertionIndex[index].from)
                         }
-                        console.log(mapped)
                         if (mapped && !rebasedTr.maybeStep(mapped).failed) {
                             const currentStepMap = mapped.getMap() 
                             maps.appendMap(mapped.getMap())
-                            console.log("CR",currentStepMap)
                             if(currentStepMap.ranges.length>0 && currentStepMap.ranges[1]>currentStepMap.ranges[2]){
                                 const y = currentStepMap.ranges[2]
                                 currentStepMap.ranges[2] = currentStepMap.ranges[1]
@@ -422,14 +416,15 @@ export class ModCollabDoc {
                 acceptAll(this.mod.editor.view,from,from+offlineConflictingInsertionIndex[index].len)
             })
 
+            // Mark the conflicting online Deletion steps as track changes
             let OnlineDeletionTr = this.mod.editor.view.state.tr
             OnlineDeletionSteps.forEach(step=>{
                 const updatedMapping = new Mapping(rebasedTrackedTr.mapping.maps.slice(0,rebasedTr.steps.length))
                 updatedMapping.appendMapping(OnlineDeletionTr.mapping)
-                OnlineDeletionTr.step(step.map(updatedMapping))
+                const mappedStep = step.map(updatedMapping)
+                if(mappedStep)
+                    OnlineDeletionTr.maybeStep(mappedStep)
             })
-
-
             let onlineDeletionTrackedTr = trackedTransaction(
                 OnlineDeletionTr,
                 this.mod.editor.view.state,
@@ -442,18 +437,11 @@ export class ModCollabDoc {
             console.log("G:",OnlineDeletionTr)
             console.log("X:",onlineDeletionTrackedTr)
             
-            // let gg = this.mod.editor.view.state.tr
-            // zzz.reverse().forEach(step=>{
-            //     console.log("ZZZ:",step[0].invert(rebasedTr.docs[step[1]]).map(rebasedTr.mapping))
-            //     gg.step(step[0].invert(rebasedTr.docs[step[1]]))
-            // })
-            // this.mod.editor.view.dispatch(gg)
-
+            // Mark the conflicting offline Deletion steps as track changes
             let offlineDeletion = this.mod.editor.view.state.tr
             offlineconflictdeletion.forEach(step=>{
                 offlineDeletion.step(step.map(offlineDeletion.mapping))
             })
-            
             console.log("YY:",offlineDeletion)
             let offlineDeletionTr = trackedTransaction(
                 offlineDeletion,
@@ -465,17 +453,7 @@ export class ModCollabDoc {
             offlineDeletionTr.setMeta('remote',true)
             console.log("XX:",offlineDeletionTr)
             this.mod.editor.view.dispatch(offlineDeletionTr)
-            
-
-            // let yo = this.mod.editor.view.state.tr.setMeta('remote',true)
-            // conflicts.forEach(conflict=>{
-            //     if(conflict[3] == "insertion"){
-            //         let xo = lostOnlineTr.steps[conflict[2]]
-            //         yo.step(xo.map(rebasedTrackedTr.mapping))
-            //     }
-            // })
-            // this.mod.editor.view.dispatch(yo)
-            
+    
             if (tracked) {
                 showSystemMessage(
                     gettext(
