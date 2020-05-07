@@ -125,7 +125,7 @@ export class ModCollabDoc {
         changes1.deletedsteps.forEach(deleted => {
             changes2.insertedsteps.forEach(inserted => {
                 if (inserted.pos >= deleted.from && inserted.pos <= deleted.to) {
-                    conflicts.push([deleted.data.step,"deletion",inserted.data.step,"insertion",inserted.range])
+                    conflicts.push([deleted.data.step,"deletion",inserted.data.step,"insertion"])
                 }
             })
         })
@@ -133,7 +133,7 @@ export class ModCollabDoc {
         changes2.deletedsteps.forEach(deleted => {
             changes1.insertedsteps.forEach(inserted => {
                 if (inserted.pos >= deleted.from && inserted.pos <= deleted.to) {
-                    conflicts.push([inserted.data.step,"insertion",deleted.data.step,"deletion",inserted.range])
+                    conflicts.push([inserted.data.step,"insertion",deleted.data.step,"deletion"])
                 }
             })
         })
@@ -155,7 +155,7 @@ export class ModCollabDoc {
         changes.changes.forEach(change=>{
             change.inserted.forEach(inserted=>{
                 if(!ins.includes(inserted.data.step)){
-                    insertedsteps.push({pos: invertedMapping.map(change.fromB), data: inserted.data ,range:{ from:change.fromB, len:change.toB - change.fromB} })
+                    insertedsteps.push({pos: invertedMapping.map(change.fromB), data: inserted.data })
                     ins.push(inserted.data.step)
                 }
             })
@@ -240,6 +240,7 @@ export class ModCollabDoc {
             
             // Try to condense the offline steps
             const condensedSteps = this.simplifyTransaction(unconfirmedTr)
+            // const unconfirmedCondensedTr = unconfirmedTr
             const unconfirmedCondensedTr = confirmedState.tr
             condensedSteps.forEach(step=>unconfirmedCondensedTr.step(step))
 
@@ -262,16 +263,19 @@ export class ModCollabDoc {
                     onlineConflictingDeltionIndex.push(conflict[2])
                 }
                 if(!Object.keys(offlineConflictingInsertionIndex).includes(String(conflict[0])) && conflict[1] == "insertion"){
-                    offlineConflictingInsertionIndex[conflict[0]] = conflict[4]
+                    offlineConflictingInsertionIndex[conflict[0]] = {}
                 }
             })
 
             // Rollback the online conflicting steps
             lostOnlineTr.steps.forEach((step,index)=>{
                 if(onlineConflictingDeltionIndex.includes(index)){
-                    console.log("STEP",step,step.invert(lostOnlineTr.docs[index]))
-                    if(!rollbackOnlineConflictDeletionTr.maybeStep(step.invert(lostOnlineTr.docs[index]).map(rollbackOnlineConflictDeletionTr.mapping)).failed){
-                        OnlineDeletionSteps.push(step.map(rollbackOnlineConflictDeletionTr.mapping.slice(0,rollbackOnlineConflictDeletionTr.steps.length-1)))
+                    const rollbackMapping = new Mapping()
+                    rollbackMapping.appendMapping(lostOnlineTr.mapping)
+                    rollbackMapping.appendMapping(rollbackOnlineConflictDeletionTr.mapping)
+                    const invertedStep = step.invert(lostOnlineTr.docs[index]).map(rollbackMapping.slice(index+1))
+                    if(invertedStep && !rollbackOnlineConflictDeletionTr.maybeStep(invertedStep).failed){
+                        OnlineDeletionSteps.push(step.map(rollbackMapping.slice(index+1)))
                     } else {
                         const arr_index = onlineConflictingDeltionIndex.indexOf(index)
                         delete onlineConflictingDeltionIndex[arr_index]
@@ -280,48 +284,54 @@ export class ModCollabDoc {
             })
             console.log(rollbackOnlineConflictDeletionTr)
             this.mod.editor.view.dispatch(rollbackOnlineConflictDeletionTr)
-            
+
             const rebasedTr = this.mod.editor.view.state.tr 
             let modifiedOnlineStepMaps = [] 
             let offset = 0
 
             // Modify the steps maps as we re-introduced the conflicting deletion.
-            lostOnlineTr.mapping.maps.slice().map((map,index)=>{
+            lostOnlineTr.mapping.maps.slice().forEach((map,index)=>{
                 if(onlineConflictingDeltionIndex.includes(index)){
                     if(map.ranges.length>0 && map.ranges[1]>map.ranges[2]){
                         offset+=(map.ranges[1]-map.ranges[2])
-                        map.ranges = []
-                    }
+                    } 
+                    // else if (map.ranges.length>0 && map.ranges[1]<map.ranges[2] && map.ranges[2] != 0) {
+                    //     offset+=(map.ranges[1])
+                    //     map.ranges[1] = 0
+                    //     map.ranges[0]+=parseInt(offset)
+                    //     // if(map.ranges.length>0)map.ranges[0] += parseInt(offset)
+                    //     modifiedOnlineStepMaps.push(map)
+                    // }
                 } else {
-                    if(map.ranges.length>0)map.ranges[0]+=parseInt(offset)
+                    if(map.ranges.length>0)map.ranges[0] += parseInt(offset)
                     modifiedOnlineStepMaps.push(map)
                 }
             })
 
             let maps = new Mapping([].concat(unconfirmedCondensedTr.mapping.maps.slice().reverse().map(map=>map.invert())).concat(modifiedOnlineStepMaps))            
+            console.log("maps",maps)
             let offlineconflictdeletion = [] , DeletionMapping  = new Mapping()
             unconfirmedCondensedTr.steps.forEach(
                 (step, index) => {
-                    const mapped = step.map(maps.slice(unconfirmedCondensedTr.steps.length - index))
-                    if(offlineConflictingDeletionIndex.includes(index) && mapped) {
-                        offlineconflictdeletion.push(mapped)
-                    } else {
-                        if(Object.keys(offlineConflictingInsertionIndex).includes(String(index))){
-                            offlineConflictingInsertionIndex[index].from = maps.slice(unconfirmedCondensedTr.steps.length - index).map(offlineConflictingInsertionIndex[index].from)
-                        }
-                        if (mapped && !rebasedTr.maybeStep(mapped).failed) {
-                            const currentStepMap = mapped.getMap() 
-                            maps.appendMap(mapped.getMap())
-                            if(currentStepMap.ranges.length>0 && currentStepMap.ranges[1]>currentStepMap.ranges[2]){
-                                const y = currentStepMap.ranges[2]
-                                currentStepMap.ranges[2] = currentStepMap.ranges[1]
-                                currentStepMap.ranges[1] = y
-                                DeletionMapping.appendMap(currentStepMap)
+                        console.log("MAPS SLICE:",maps.slice(unconfirmedCondensedTr.steps.length - index))
+                        const mapped = step.map(maps.slice(unconfirmedCondensedTr.steps.length - index))
+                        console.log("MAPPED STEP:",mapped)
+                        if(offlineConflictingDeletionIndex.includes(index) && mapped) {
+                            offlineconflictdeletion.push([mapped,rebasedTr.steps.length])
+                        } else {
+                            if(Object.keys(offlineConflictingInsertionIndex).includes(String(index))){
+                                offlineConflictingInsertionIndex[index].step = mapped
+                                offlineConflictingInsertionIndex[index]["rebasedIndex"] = rebasedTr.steps.length
                             }
-                            maps.setMirror(unconfirmedCondensedTr.steps.length-index-1,(unconfirmedCondensedTr.steps.length+lostOnlineTr.steps.length-rollbackOnlineConflictDeletionTr.steps.length+rebasedTr.steps.length-1))
+                            if (mapped && !rebasedTr.maybeStep(mapped).failed) {
+                                const currentStepMap = mapped.getMap() 
+                                maps.appendMap(mapped.getMap())
+                                if(step.from !== step.to){
+                                    DeletionMapping.appendMap(currentStepMap.invert())
+                                }
+                                maps.setMirror(unconfirmedCondensedTr.steps.length-index-1,(unconfirmedCondensedTr.steps.length+lostOnlineTr.steps.length-rollbackOnlineConflictDeletionTr.steps.length+rebasedTr.steps.length-1))
+                            }
                         }
-                    }
-
                 }
             )
 
@@ -406,14 +416,33 @@ export class ModCollabDoc {
             console.log("Rebased TrackedTr",rebasedTrackedTr)
 
             // Now accept all tracked insertions that are conflicting because when we have tracked delete on top the tracked insertions get deleted.
-            console.log("OFfline insertions",offlineConflictingInsertionIndex)
+            let rangesToBeAccepted = []
             Object.keys(offlineConflictingInsertionIndex).forEach((index)=>{
-                let from = offlineConflictingInsertionIndex[index].from
-                console.log("DM",DeletionMapping)
-                if(tracked)
-                    from = DeletionMapping.map(from)         
-                console.log("FROMMP",from)       
-                acceptAll(this.mod.editor.view,from,from+offlineConflictingInsertionIndex[index].len)
+                let from = offlineConflictingInsertionIndex[index].step.from
+                const rebasedIndex = offlineConflictingInsertionIndex[index].rebasedIndex
+                console.log("MAPPINGOA",rebasedTrackedTr.mapping.slice(rebasedIndex+1,rebasedTrackedTr.steps.length))
+                from = rebasedTrackedTr.mapping.slice(rebasedIndex+1,rebasedTrackedTr.steps.length).map(from)
+
+                // To handle deletion when they're tracked
+                if(tracked)from = DeletionMapping.map(from)
+                const to = from+offlineConflictingInsertionIndex[index].step.slice.size
+                let rangeModified = false
+
+                // To handle overlapping steps
+                rangesToBeAccepted.forEach(range=>{
+                    if(from>=range.from && from<=range.to){
+                        range.to+=offlineConflictingInsertionIndex[index].step.slice.size
+                        rangeModified = true
+                    }
+                })
+                if(!rangeModified){
+                    rangesToBeAccepted.push({'from':from,'to':to})
+                }
+            })
+
+            rangesToBeAccepted.forEach(range=>{
+                console.log(range)
+                acceptAll(this.mod.editor.view,range.from,range.to)
             })
 
             // Mark the conflicting online Deletion steps as track changes
@@ -439,8 +468,12 @@ export class ModCollabDoc {
             
             // Mark the conflicting offline Deletion steps as track changes
             let offlineDeletion = this.mod.editor.view.state.tr
-            offlineconflictdeletion.forEach(step=>{
-                offlineDeletion.step(step.map(offlineDeletion.mapping))
+            offlineconflictdeletion.forEach((step,index)=>{
+                const offlineMapping = new Mapping(rebasedTrackedTr.mapping.maps.slice(parseInt(step[1]),rebasedTr.steps.length))
+                offlineMapping.appendMapping(offlineDeletion.mapping)
+                const mappedStep = step[0].map(offlineMapping)
+                if(mappedStep)
+                    offlineDeletion.maybeStep(mappedStep)
             })
             console.log("YY:",offlineDeletion)
             let offlineDeletionTr = trackedTransaction(
