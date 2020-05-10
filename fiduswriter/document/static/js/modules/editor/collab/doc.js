@@ -9,10 +9,11 @@ import {
     Step,
     Mapping,
     Transform,
-    StepMap
+    ReplaceStep,
+    ReplaceAroundStep
 } from "prosemirror-transform"
 import {
-    EditorState,Transaction
+    EditorState
 } from "prosemirror-state"
 import {
     getSelectionUpdate,
@@ -36,8 +37,11 @@ import {
     trackedTransaction,acceptAll
 } from "../track"
 import {
-    ChangeSet,simplifyChanges
+    ChangeSet
 } from 'prosemirror-changeset'
+import { 
+    Slice
+} from "prosemirror-model"
 
 export class ModCollabDoc {
     constructor(mod) {
@@ -50,7 +54,7 @@ export class ModCollabDoc {
         this.receiving = false
         this.currentlyCheckingVersion = false
 
-        this.trackOfflineLimit = 1 // Limit of local changes while offline for tracking to kick in when multiple users edit
+        this.trackOfflineLimit = 50 // Limit of local changes while offline for tracking to kick in when multiple users edit
         this.remoteTrackOfflineLimit = 20 // Limit of remote changes while offline for tracking to kick in when multiple users edit
     }
 
@@ -223,7 +227,25 @@ export class ModCollabDoc {
             const toDoc = this.mod.editor.schema.nodeFromJSON({type:'doc', content:[
                 data.doc.contents
             ]})
-            const lostTr = recreateTransform(this.mod.editor.docInfo.confirmedDoc, toDoc)
+            let lostTr = recreateTransform(this.mod.editor.docInfo.confirmedDoc, toDoc)
+
+            // Modify the online transactions to have simple replace steps instead of inserting and deleting at same time
+            const modifiedlostTr = new Transform(this.mod.editor.docInfo.confirmedDoc)
+            lostTr.steps.forEach(step=>{
+                if(step instanceof ReplaceStep && step.slice.size>0 && step.from !== step.to){
+                    const delsize = step.to-step.from
+                    let step2 = new ReplaceStep(step.from,step.from,step.slice)
+                    const from = step.from+step.slice.size
+                    let step1 = new ReplaceStep(from,from+delsize,Slice.empty)
+                    modifiedlostTr.step(step2)
+                    modifiedlostTr.step(step1)
+                }
+                else{
+                    modifiedlostTr.step(step)
+                }
+            })
+            lostTr = modifiedlostTr
+
             let tracked
             const lostState = EditorState.create({doc: toDoc})
             const lostOnlineTr = receiveTransaction(
@@ -274,7 +296,10 @@ export class ModCollabDoc {
                     rollbackMapping.appendMapping(lostOnlineTr.mapping)
                     rollbackMapping.appendMapping(rollbackOnlineConflictDeletionTr.mapping)
                     const invertedStep = step.invert(lostOnlineTr.docs[index]).map(rollbackMapping.slice(index+1))
-                    if(invertedStep && !rollbackOnlineConflictDeletionTr.maybeStep(invertedStep).failed){
+                    if(invertedStep){
+                        const x = rollbackOnlineConflictDeletionTr.maybeStep(invertedStep) 
+                        console.log("INVSTEP",invertedStep,x)
+                        if(!x.failed)
                         OnlineDeletionSteps.push(step.map(rollbackMapping.slice(index+1)))
                     } else {
                         const arr_index = onlineConflictingDeltionIndex.indexOf(index)
@@ -295,13 +320,6 @@ export class ModCollabDoc {
                     if(map.ranges.length>0 && map.ranges[1]>map.ranges[2]){
                         offset+=(map.ranges[1]-map.ranges[2])
                     } 
-                    // else if (map.ranges.length>0 && map.ranges[1]<map.ranges[2] && map.ranges[2] != 0) {
-                    //     offset+=(map.ranges[1])
-                    //     map.ranges[1] = 0
-                    //     map.ranges[0]+=parseInt(offset)
-                    //     // if(map.ranges.length>0)map.ranges[0] += parseInt(offset)
-                    //     modifiedOnlineStepMaps.push(map)
-                    // }
                 } else {
                     if(map.ranges.length>0)map.ranges[0] += parseInt(offset)
                     modifiedOnlineStepMaps.push(map)
@@ -319,11 +337,11 @@ export class ModCollabDoc {
                         if(offlineConflictingDeletionIndex.includes(index) && mapped) {
                             offlineconflictdeletion.push([mapped,rebasedTr.steps.length])
                         } else {
-                            if(Object.keys(offlineConflictingInsertionIndex).includes(String(index))){
-                                offlineConflictingInsertionIndex[index].step = mapped
-                                offlineConflictingInsertionIndex[index]["rebasedIndex"] = rebasedTr.steps.length
-                            }
                             if (mapped && !rebasedTr.maybeStep(mapped).failed) {
+                                if(Object.keys(offlineConflictingInsertionIndex).includes(String(index))){
+                                    offlineConflictingInsertionIndex[index].step = mapped
+                                    offlineConflictingInsertionIndex[index]["rebasedIndex"] = rebasedTr.steps.length
+                                }
                                 const currentStepMap = mapped.getMap() 
                                 maps.appendMap(mapped.getMap())
                                 if(step.from !== step.to){
@@ -418,25 +436,26 @@ export class ModCollabDoc {
             // Now accept all tracked insertions that are conflicting because when we have tracked delete on top the tracked insertions get deleted.
             let rangesToBeAccepted = []
             Object.keys(offlineConflictingInsertionIndex).forEach((index)=>{
-                let from = offlineConflictingInsertionIndex[index].step.from
-                const rebasedIndex = offlineConflictingInsertionIndex[index].rebasedIndex
-                console.log("MAPPINGOA",rebasedTrackedTr.mapping.slice(rebasedIndex+1,rebasedTrackedTr.steps.length))
-                from = rebasedTrackedTr.mapping.slice(rebasedIndex+1,rebasedTrackedTr.steps.length).map(from)
+                if(offlineConflictingInsertionIndex[index].step){
+                    let from = offlineConflictingInsertionIndex[index].step.from
+                    const rebasedIndex = offlineConflictingInsertionIndex[index].rebasedIndex
+                    from = rebasedTrackedTr.mapping.slice(rebasedIndex+1,rebasedTrackedTr.steps.length).map(from)
 
-                // To handle deletion when they're tracked
-                if(tracked)from = DeletionMapping.map(from)
-                const to = from+offlineConflictingInsertionIndex[index].step.slice.size
-                let rangeModified = false
+                    // To handle deletion when they're tracked
+                    if(tracked)from = DeletionMapping.map(from)
+                    const to = from+offlineConflictingInsertionIndex[index].step.slice.size
+                    let rangeModified = false
 
-                // To handle overlapping steps
-                rangesToBeAccepted.forEach(range=>{
-                    if(from>=range.from && from<=range.to){
-                        range.to+=offlineConflictingInsertionIndex[index].step.slice.size
-                        rangeModified = true
+                    // To handle overlapping steps
+                    rangesToBeAccepted.forEach(range=>{
+                        if(from>=range.from && from<=range.to){
+                            range.to+=offlineConflictingInsertionIndex[index].step.slice.size
+                            rangeModified = true
+                        }
+                    })
+                    if(!rangeModified){
+                        rangesToBeAccepted.push({'from':from,'to':to})
                     }
-                })
-                if(!rangeModified){
-                    rangesToBeAccepted.push({'from':from,'to':to})
                 }
             })
 
@@ -448,9 +467,10 @@ export class ModCollabDoc {
             // Mark the conflicting online Deletion steps as track changes
             let OnlineDeletionTr = this.mod.editor.view.state.tr
             OnlineDeletionSteps.forEach(step=>{
-                const updatedMapping = new Mapping(rebasedTrackedTr.mapping.maps.slice(0,rebasedTr.steps.length))
+                const updatedMapping = new Mapping(rebasedTrackedTr.mapping.maps.slice(0,rebasedTrackedTr.steps.length))
                 updatedMapping.appendMapping(OnlineDeletionTr.mapping)
                 const mappedStep = step.map(updatedMapping)
+                console.log(mappedStep,OnlineDeletionTr.maybeStep(mappedStep))
                 if(mappedStep)
                     OnlineDeletionTr.maybeStep(mappedStep)
             })
