@@ -10,11 +10,16 @@ import {
     Mapping,
     Transform,
     ReplaceStep,
-    ReplaceAroundStep
+    ReplaceAroundStep,
+    AddMarkStep,
+    RemoveMarkStep
 } from "prosemirror-transform"
 import {
     EditorState
 } from "prosemirror-state"
+import {
+    EditorView
+} from "prosemirror-view"
 import {
     getSelectionUpdate,
     removeCollaboratorSelection,
@@ -25,7 +30,8 @@ import {
 } from "../../document_template"
 import {
     showSystemMessage,
-    deactivateWait
+    deactivateWait,
+    Dialog
 } from "../../common"
 import {
     toMiniJSON
@@ -191,11 +197,138 @@ export class ModCollabDoc {
         return condensedSteps
     }
 
+    changeSet(tr){
+        const doc = this.trDoc(tr)
+        let changes = ChangeSet.create(doc)
+        tr.steps.forEach((step, index) => {
+            const doc = this.trDoc(tr, index + 1)
+            changes = changes.addSteps(doc, [tr.mapping.maps[index]], {step: index})
+        })
+        return changes
+    }
+
+    openDiffEditors(CpDoc,offlineDoc,onlineDoc,offlineTr,onlineTr){
+        const dia = new Dialog({
+            id: 'editor-merge-view',
+            title: gettext("Merging Offline Document"),
+            body: `<div style="display:flex;"><div id="editor-diff-1" style="float:left;"></div><div id="editor-diff"></div><div id="editor-diff-2" style="float:right;"></div></div>`,
+        })
+        dia.open()
+        const view1 = new EditorView(document.getElementById('editor-diff-1'), {
+            state: EditorState.create({
+                schema: this.mod.editor.schema,
+                doc: offlineDoc,
+            })
+          })
+          
+        const view2 = new EditorView(document.getElementById('editor-diff'), {
+            state: EditorState.create({
+                schema: this.mod.editor.schema,
+                doc: CpDoc,
+            })
+        })
+        const view3 = new EditorView(document.getElementById('editor-diff-2'), {
+            state: EditorState.create({
+                schema: this.mod.editor.schema,
+                doc: onlineDoc,
+            })
+        })
+
+        const commonMaps = new Mapping()
+
+        const changeset = this.changeSet(offlineTr)
+        changeset.changes.forEach(change=>{
+        if(change.inserted.length>0){
+            const trackedTr = view1.state.tr
+            const steps_involved = []
+            change.inserted.forEach(insertion=>steps_involved.push(insertion.data.step))
+            const insertionMark = this.mod.editor.schema.marks.DiffMark.create({diff:"offline-inserted",steps:JSON.stringify(steps_involved),from:change.fromB,to:change.toB})
+            trackedTr.addMark(change.fromB,change.toB,insertionMark)
+            const newState = view1.state.apply(trackedTr)
+            view1.updateState(newState)
+        } if (change.deleted.length>0){
+            const trackedTr = view2.state.tr
+            const deletionMark = this.mod.editor.schema.marks.DiffMark.create({diff:"offline-deleted"})
+            trackedTr.addMark(change.fromA,change.toA,deletionMark)  
+            view2.dispatch(trackedTr)
+        }
+        })
+
+        const changeset2 = this.changeSet(onlineTr)
+        changeset2.changes.forEach(change=>{
+        if(change.inserted.length>0){
+            const trackedTr = view3.state.tr
+            const steps_involved = []
+            change.inserted.forEach(insertion=>steps_involved.push(insertion.data.step))
+            const insertionMark = this.mod.editor.schema.marks.DiffMark.create({diff:"online-inserted",steps:JSON.stringify(steps_involved),from:change.fromB,to:change.toB})
+            trackedTr.addMark(change.fromB,change.toB,insertionMark)
+            const newState = view3.state.apply(trackedTr)
+            view3.updateState(newState)
+        } if (change.deleted.length>0){
+            const trackedTr = view2.state.tr
+            const deletionMark = this.mod.editor.schema.marks.DiffMark.create({diff:"online-deleted"})
+            trackedTr.addMark(change.fromA,change.toA,deletionMark)  
+            view2.dispatch(trackedTr)
+        }
+        })
+
+        const offlineInsertedElements = document.querySelectorAll("span.offline-inserted")
+        for(let element of offlineInsertedElements){
+        element.addEventListener("click",()=>{
+            const tra = view2.state.tr
+            const from = element.dataset.from
+            const to = element.dataset.to
+            const steps = JSON.parse(element.dataset.steps)
+            for(let stepIndex of steps)
+                tra.step(offlineTr.steps[stepIndex].map(commonMaps))
+
+            // Put the proper mark steps back again
+            for(let step of offlineTr.steps){
+                if(step instanceof AddMarkStep || step instanceof RemoveMarkStep){
+                    console.log("MARK STEP")
+                    if(step.from>=from && step.to <= to){
+                    tra.step(step)
+                    }
+                }
+            }
+            const newState = view2.state.apply(tra)
+            view2.updateState(newState)
+            commonMaps.appendMapping(tra.mapping)
+        })
+        }
+
+
+        const onlineInsertedElements = document.querySelectorAll("span.online-inserted")
+        for(let element of onlineInsertedElements){
+        element.addEventListener("click",()=>{
+            const tra = view2.state.tr
+            const from = element.dataset.from
+            const to = element.dataset.to
+            const steps = JSON.parse(element.dataset.steps)
+            for(let stepIndex of steps)
+                tra.step(onlineTr.steps[stepIndex].map(commonMaps))
+
+            // Put the proper mark steps back again
+            for(let step of onlineTr.steps){
+                if(step instanceof AddMarkStep || step instanceof RemoveMarkStep){
+                    console.log("MARK STEP")
+                    if(step.from>=from && step.to <= to){
+                    tra.step(step)
+                    }
+                }
+            }
+            const newState = view2.state.apply(tra)
+            view2.updateState(newState)
+            commonMaps.appendMapping(tra.mapping)
+        })
+        }
+    }
 
     adjustDocument(data) {
         // Adjust the document when reconnecting after offline and many changes
         // happening on server.
         if (this.mod.editor.docInfo.version < data.doc.v) {
+            
             const confirmedState = EditorState.create({doc: this.mod.editor.docInfo.confirmedDoc})
             const unconfirmedTr = confirmedState.tr
             sendableSteps(this.mod.editor.view.state).steps.forEach(step => unconfirmedTr.step(step))
@@ -229,292 +362,298 @@ export class ModCollabDoc {
             ]})
             let lostTr = recreateTransform(this.mod.editor.docInfo.confirmedDoc, toDoc)
 
-            // Modify the online transactions to have simple replace steps instead of inserting and deleting at same time
-            const modifiedlostTr = new Transform(this.mod.editor.docInfo.confirmedDoc)
-            lostTr.steps.forEach(step=>{
-                if(step instanceof ReplaceStep && step.slice.size>0 && step.from !== step.to){
-                    const delsize = step.to-step.from
-                    let step2 = new ReplaceStep(step.from,step.from,step.slice)
-                    const from = step.from+step.slice.size
-                    let step1 = new ReplaceStep(from,from+delsize,Slice.empty)
-                    modifiedlostTr.step(step2)
-                    modifiedlostTr.step(step1)
-                }
-                else{
-                    modifiedlostTr.step(step)
-                }
-            })
-            lostTr = modifiedlostTr
-
-            let tracked
-            const lostState = EditorState.create({doc: toDoc})
-            const lostOnlineTr = receiveTransaction(
-                this.mod.editor.view.state,
-                lostTr.steps,
-                lostTr.steps.map(_step => 'remote')
-            )
-            this.mod.editor.view.dispatch(lostOnlineTr)
-            
-            // Set Confirmed DOC
-            this.mod.editor.docInfo.confirmedDoc = lostState.doc
-            this.mod.editor.docInfo.confirmedJson = toMiniJSON(this.mod.editor.docInfo.confirmedDoc.firstChild)
-            console.log("Lost online",lostTr)  
-            
-            // Try to condense the offline steps
             const condensedSteps = this.simplifyTransaction(unconfirmedTr)
-            // const unconfirmedCondensedTr = unconfirmedTr
             const unconfirmedCondensedTr = confirmedState.tr
             condensedSteps.forEach(step=>unconfirmedCondensedTr.step(step))
 
-            console.log("Condensed Steps",condensedSteps)
-            console.log("Condensed Tr", unconfirmedCondensedTr)
+            this.openDiffEditors(this.mod.editor.docInfo.confirmedDoc,unconfirmedTr.doc,toDoc,unconfirmedCondensedTr,lostTr)
 
-            // Find the conflicting steps          
-            let conflicts = this.findConflicts(unconfirmedCondensedTr,lostOnlineTr)
-            console.log(JSON.parse(JSON.stringify(conflicts)))
+            // // Modify the online transactions to have simple replace steps instead of inserting and deleting at same time
+            // const modifiedlostTr = new Transform(this.mod.editor.docInfo.confirmedDoc)
+            // lostTr.steps.forEach(step=>{
+            //     if(step instanceof ReplaceStep && step.slice.size>0 && step.from !== step.to){
+            //         const delsize = step.to-step.from
+            //         let step2 = new ReplaceStep(step.from,step.from,step.slice)
+            //         const from = step.from+step.slice.size
+            //         let step1 = new ReplaceStep(from,from+delsize,Slice.empty)
+            //         modifiedlostTr.step(step2)
+            //         modifiedlostTr.step(step1)
+            //     }
+            //     else{
+            //         modifiedlostTr.step(step)
+            //     }
+            // })
+            // lostTr = modifiedlostTr
 
-            let rollbackOnlineConflictDeletionTr = this.mod.editor.view.state.tr
-            let onlineConflictingDeltionIndex = [] , OnlineDeletionSteps = [] , offlineConflictingDeletionIndex = []  , offlineConflictingInsertionIndex= {}
-
-            // Store the indexes of conflicting deletion steps
-            conflicts.forEach(conflict=>{
-                if(!offlineConflictingDeletionIndex.includes(conflict[0]) && conflict[1] == "deletion"){
-                    offlineConflictingDeletionIndex.push(conflict[0])
-                }
-                if(!onlineConflictingDeltionIndex.includes(conflict[2]) && conflict[3] == "deletion"){
-                    onlineConflictingDeltionIndex.push(conflict[2])
-                }
-                if(!Object.keys(offlineConflictingInsertionIndex).includes(String(conflict[0])) && conflict[1] == "insertion"){
-                    offlineConflictingInsertionIndex[conflict[0]] = {}
-                }
-            })
-
-            // Rollback the online conflicting steps
-            lostOnlineTr.steps.forEach((step,index)=>{
-                if(onlineConflictingDeltionIndex.includes(index)){
-                    const rollbackMapping = new Mapping()
-                    rollbackMapping.appendMapping(lostOnlineTr.mapping)
-                    rollbackMapping.appendMapping(rollbackOnlineConflictDeletionTr.mapping)
-                    const invertedStep = step.invert(lostOnlineTr.docs[index]).map(rollbackMapping.slice(index+1))
-                    if(invertedStep){
-                        const x = rollbackOnlineConflictDeletionTr.maybeStep(invertedStep) 
-                        console.log("INVSTEP",invertedStep,x)
-                        if(!x.failed)
-                        OnlineDeletionSteps.push(step.map(rollbackMapping.slice(index+1)))
-                    } else {
-                        const arr_index = onlineConflictingDeltionIndex.indexOf(index)
-                        delete onlineConflictingDeltionIndex[arr_index]
-                    }
-                }
-            })
-            console.log(rollbackOnlineConflictDeletionTr)
-            this.mod.editor.view.dispatch(rollbackOnlineConflictDeletionTr)
-
-            const rebasedTr = this.mod.editor.view.state.tr 
-            let modifiedOnlineStepMaps = [] 
-            let offset = 0
-
-            // Modify the steps maps as we re-introduced the conflicting deletion.
-            lostOnlineTr.mapping.maps.slice().forEach((map,index)=>{
-                if(onlineConflictingDeltionIndex.includes(index)){
-                    if(map.ranges.length>0 && map.ranges[1]>map.ranges[2]){
-                        offset+=(map.ranges[1]-map.ranges[2])
-                    } 
-                } else {
-                    if(map.ranges.length>0)map.ranges[0] += parseInt(offset)
-                    modifiedOnlineStepMaps.push(map)
-                }
-            })
-
-            let maps = new Mapping([].concat(unconfirmedCondensedTr.mapping.maps.slice().reverse().map(map=>map.invert())).concat(modifiedOnlineStepMaps))            
-            console.log("maps",maps)
-            let offlineconflictdeletion = [] , DeletionMapping  = new Mapping()
-            unconfirmedCondensedTr.steps.forEach(
-                (step, index) => {
-                        console.log("MAPS SLICE:",maps.slice(unconfirmedCondensedTr.steps.length - index))
-                        const mapped = step.map(maps.slice(unconfirmedCondensedTr.steps.length - index))
-                        console.log("MAPPED STEP:",mapped)
-                        if(offlineConflictingDeletionIndex.includes(index) && mapped) {
-                            offlineconflictdeletion.push([mapped,rebasedTr.steps.length])
-                        } else {
-                            if (mapped && !rebasedTr.maybeStep(mapped).failed) {
-                                if(Object.keys(offlineConflictingInsertionIndex).includes(String(index))){
-                                    offlineConflictingInsertionIndex[index].step = mapped
-                                    offlineConflictingInsertionIndex[index]["rebasedIndex"] = rebasedTr.steps.length
-                                }
-                                const currentStepMap = mapped.getMap() 
-                                maps.appendMap(mapped.getMap())
-                                if(step.from !== step.to){
-                                    DeletionMapping.appendMap(currentStepMap.invert())
-                                }
-                                maps.setMirror(unconfirmedCondensedTr.steps.length-index-1,(unconfirmedCondensedTr.steps.length+lostOnlineTr.steps.length-rollbackOnlineConflictDeletionTr.steps.length+rebasedTr.steps.length-1))
-                            }
-                        }
-                }
-            )
-
-            console.log("ZZZ",offlineconflictdeletion)
-            console.log("rebasedTr",rebasedTr)
+            // let tracked
+            // const lostState = EditorState.create({doc: toDoc})
+            // const lostOnlineTr = receiveTransaction(
+            //     this.mod.editor.view.state,
+            //     lostTr.steps,
+            //     lostTr.steps.map(_step => 'remote')
+            // )
+            // this.mod.editor.view.dispatch(lostOnlineTr)
             
-            // Enable/Disable tracked changes based on some conditions
-            let rebasedTrackedTr
-            if (
-                ['write', 'write-tracked'].includes(this.mod.editor.docInfo.access_rights) &&
-                (
-                    unconfirmedTr.steps.length > this.trackOfflineLimit ||
-                    lostTr.steps.length > this.remoteTrackOfflineLimit
-                )
-            ) {
-                tracked = true
-                // Either this user has made 50 changes since going offline,
-                // or the document has 20 changes to it. Therefore we add tracking
-                // to the changes of this user and ask user to clean up.
-                rebasedTrackedTr = trackedTransaction(
-                    rebasedTr,
-                    this.mod.editor.view.state,
-                    this.mod.editor.user,
-                    false,
-                    Date.now() - this.mod.editor.clientTimeAdjustment
-                )
-                rebasedTrackedTr.setMeta('remote',true)
-            } else {
-                tracked = false
-                rebasedTrackedTr = rebasedTr
-            }
-
-
-            const usedImages = [],
-                usedBibs = []
-            const footnoteFind = (node, usedImages, usedBibs) => {
-                if (node.name==='citation') {
-                    node.attrs.references.forEach(ref => usedBibs.push(parseInt(ref.id)))
-                } else if (node.name==='figure' && node.attrs.image) {
-                    usedImages.push(node.attrs.image)
-                } else if (node.content) {
-                    node.content.forEach(subNode => footnoteFind(subNode, usedImages, usedBibs))
-                }
-            }
-
-            // Looking at rebased doc so that it contains the merged document !!!
-            rebasedTr.doc.descendants(node => {
-                if (node.type.name==='citation') {
-                    node.attrs.references.forEach(ref => usedBibs.push(parseInt(ref.id)))
-                } else if (node.type.name==='figure' && node.attrs.image) {
-                    usedImages.push(node.attrs.image)
-                } else if (node.type.name==='footnote' && node.attrs.footnote) {
-                    node.attrs.footnote.forEach(subNode => footnoteFind(subNode, usedImages, usedBibs))
-                }
-            })
+            // // Set Confirmed DOC
+            // this.mod.editor.docInfo.confirmedDoc = lostState.doc
+            // this.mod.editor.docInfo.confirmedJson = toMiniJSON(this.mod.editor.docInfo.confirmedDoc.firstChild)
+            // console.log("Lost online",lostTr)  
             
-            const oldBibDB = this.mod.editor.mod.db.bibDB.db
-            this.mod.editor.mod.db.bibDB.setDB(data.doc.bibliography)
-            usedBibs.forEach(id => {
-                if (!this.mod.editor.mod.db.bibDB.db[id] && oldBibDB[id]) {
-                    this.mod.editor.mod.db.bibDB.updateReference(id, oldBibDB[id])
-                }
-            })
-            const oldImageDB = this.mod.editor.mod.db.imageDB.db
-            this.mod.editor.mod.db.imageDB.setDB(data.doc.images)
-            usedImages.forEach(id => {
-                if (!this.mod.editor.mod.db.imageDB.db[id] && oldImageDB[id]) {
-                    // If the image was uploaded by the offline user we know that he may not have deleted it so we can resend it normally
-                    if(Object.keys(this.mod.editor.app.imageDB.db).includes(id)){
-                        this.mod.editor.mod.db.imageDB.setImage(id, oldImageDB[id])
-                    } else {
-                        // If the image was uploaded by someone else , to set the image we have to reupload it again as there is backend check to associate who can add an image with the image owner.
-                        this.mod.editor.mod.db.imageDB.reUploadImage(id,oldImageDB[id].image,oldImageDB[id].title,oldImageDB[id].copyright)
+            // // Try to condense the offline steps
+            // const condensedSteps = this.simplifyTransaction(unconfirmedTr)
+            // // const unconfirmedCondensedTr = unconfirmedTr
+            // const unconfirmedCondensedTr = confirmedState.tr
+            // condensedSteps.forEach(step=>unconfirmedCondensedTr.step(step))
 
-                    }
-                }
-            })
+            // console.log("Condensed Steps",condensedSteps)
+            // console.log("Condensed Tr", unconfirmedCondensedTr)
 
+            // // Find the conflicting steps          
+            // let conflicts = this.findConflicts(unconfirmedCondensedTr,lostOnlineTr)
+            // console.log(JSON.parse(JSON.stringify(conflicts)))
 
-            this.mod.editor.docInfo.version = data.doc.v
-            this.mod.editor.view.dispatch(rebasedTrackedTr)
-            console.log("Rebased TrackedTr",rebasedTrackedTr)
+            // let rollbackOnlineConflictDeletionTr = this.mod.editor.view.state.tr
+            // let onlineConflictingDeltionIndex = [] , OnlineDeletionSteps = [] , offlineConflictingDeletionIndex = []  , offlineConflictingInsertionIndex= {}
 
-            // Now accept all tracked insertions that are conflicting because when we have tracked delete on top the tracked insertions get deleted.
-            let rangesToBeAccepted = []
-            Object.keys(offlineConflictingInsertionIndex).forEach((index)=>{
-                if(offlineConflictingInsertionIndex[index].step){
-                    let from = offlineConflictingInsertionIndex[index].step.from
-                    const rebasedIndex = offlineConflictingInsertionIndex[index].rebasedIndex
-                    from = rebasedTrackedTr.mapping.slice(rebasedIndex+1,rebasedTrackedTr.steps.length).map(from)
+            // // Store the indexes of conflicting deletion steps
+            // conflicts.forEach(conflict=>{
+            //     if(!offlineConflictingDeletionIndex.includes(conflict[0]) && conflict[1] == "deletion"){
+            //         offlineConflictingDeletionIndex.push(conflict[0])
+            //     }
+            //     if(!onlineConflictingDeltionIndex.includes(conflict[2]) && conflict[3] == "deletion"){
+            //         onlineConflictingDeltionIndex.push(conflict[2])
+            //     }
+            //     if(!Object.keys(offlineConflictingInsertionIndex).includes(String(conflict[0])) && conflict[1] == "insertion"){
+            //         offlineConflictingInsertionIndex[conflict[0]] = {}
+            //     }
+            // })
 
-                    // To handle deletion when they're tracked
-                    if(tracked)from = DeletionMapping.map(from)
-                    const to = from+offlineConflictingInsertionIndex[index].step.slice.size
-                    let rangeModified = false
+            // // Rollback the online conflicting steps
+            // lostOnlineTr.steps.forEach((step,index)=>{
+            //     if(onlineConflictingDeltionIndex.includes(index)){
+            //         const rollbackMapping = new Mapping()
+            //         rollbackMapping.appendMapping(lostOnlineTr.mapping)
+            //         rollbackMapping.appendMapping(rollbackOnlineConflictDeletionTr.mapping)
+            //         const invertedStep = step.invert(lostOnlineTr.docs[index]).map(rollbackMapping.slice(index+1))
+            //         if(invertedStep){
+            //             const x = rollbackOnlineConflictDeletionTr.maybeStep(invertedStep) 
+            //             console.log("INVSTEP",invertedStep,x)
+            //             if(!x.failed)
+            //             OnlineDeletionSteps.push(step.map(rollbackMapping.slice(index+1)))
+            //         } else {
+            //             const arr_index = onlineConflictingDeltionIndex.indexOf(index)
+            //             delete onlineConflictingDeltionIndex[arr_index]
+            //         }
+            //     }
+            // })
+            // console.log(rollbackOnlineConflictDeletionTr)
+            // this.mod.editor.view.dispatch(rollbackOnlineConflictDeletionTr)
 
-                    // To handle overlapping steps
-                    rangesToBeAccepted.forEach(range=>{
-                        if(from>=range.from && from<=range.to){
-                            range.to+=offlineConflictingInsertionIndex[index].step.slice.size
-                            rangeModified = true
-                        }
-                    })
-                    if(!rangeModified){
-                        rangesToBeAccepted.push({'from':from,'to':to})
-                    }
-                }
-            })
+            // const rebasedTr = this.mod.editor.view.state.tr 
+            // let modifiedOnlineStepMaps = [] 
+            // let offset = 0
 
-            rangesToBeAccepted.forEach(range=>{
-                console.log(range)
-                acceptAll(this.mod.editor.view,range.from,range.to)
-            })
+            // // Modify the steps maps as we re-introduced the conflicting deletion.
+            // lostOnlineTr.mapping.maps.slice().forEach((map,index)=>{
+            //     if(onlineConflictingDeltionIndex.includes(index)){
+            //         if(map.ranges.length>0 && map.ranges[1]>map.ranges[2]){
+            //             offset+=(map.ranges[1]-map.ranges[2])
+            //         } 
+            //     } else {
+            //         if(map.ranges.length>0)map.ranges[0] += parseInt(offset)
+            //         modifiedOnlineStepMaps.push(map)
+            //     }
+            // })
 
-            // Mark the conflicting online Deletion steps as track changes
-            let OnlineDeletionTr = this.mod.editor.view.state.tr
-            OnlineDeletionSteps.forEach(step=>{
-                const updatedMapping = new Mapping(rebasedTrackedTr.mapping.maps.slice(0,rebasedTrackedTr.steps.length))
-                updatedMapping.appendMapping(OnlineDeletionTr.mapping)
-                const mappedStep = step.map(updatedMapping)
-                console.log(mappedStep,OnlineDeletionTr.maybeStep(mappedStep))
-                if(mappedStep)
-                    OnlineDeletionTr.maybeStep(mappedStep)
-            })
-            let onlineDeletionTrackedTr = trackedTransaction(
-                OnlineDeletionTr,
-                this.mod.editor.view.state,
-                this.mod.editor.user,
-                false,
-                Date.now() - this.mod.editor.clientTimeAdjustment
-            )
-            onlineDeletionTrackedTr.setMeta('remote',true)
-            this.mod.editor.view.dispatch(onlineDeletionTrackedTr)
-            console.log("G:",OnlineDeletionTr)
-            console.log("X:",onlineDeletionTrackedTr)
+            // let maps = new Mapping([].concat(unconfirmedCondensedTr.mapping.maps.slice().reverse().map(map=>map.invert())).concat(modifiedOnlineStepMaps))            
+            // console.log("maps",maps)
+            // let offlineconflictdeletion = [] , DeletionMapping  = new Mapping()
+            // unconfirmedCondensedTr.steps.forEach(
+            //     (step, index) => {
+            //             console.log("MAPS SLICE:",maps.slice(unconfirmedCondensedTr.steps.length - index))
+            //             const mapped = step.map(maps.slice(unconfirmedCondensedTr.steps.length - index))
+            //             console.log("MAPPED STEP:",mapped)
+            //             if(offlineConflictingDeletionIndex.includes(index) && mapped) {
+            //                 offlineconflictdeletion.push([mapped,rebasedTr.steps.length])
+            //             } else {
+            //                 if (mapped && !rebasedTr.maybeStep(mapped).failed) {
+            //                     if(Object.keys(offlineConflictingInsertionIndex).includes(String(index))){
+            //                         offlineConflictingInsertionIndex[index].step = mapped
+            //                         offlineConflictingInsertionIndex[index]["rebasedIndex"] = rebasedTr.steps.length
+            //                     }
+            //                     const currentStepMap = mapped.getMap() 
+            //                     maps.appendMap(mapped.getMap())
+            //                     if(step.from !== step.to){
+            //                         DeletionMapping.appendMap(currentStepMap.invert())
+            //                     }
+            //                     maps.setMirror(unconfirmedCondensedTr.steps.length-index-1,(unconfirmedCondensedTr.steps.length+lostOnlineTr.steps.length-rollbackOnlineConflictDeletionTr.steps.length+rebasedTr.steps.length-1))
+            //                 }
+            //             }
+            //     }
+            // )
+
+            // console.log("ZZZ",offlineconflictdeletion)
+            // console.log("rebasedTr",rebasedTr)
             
-            // Mark the conflicting offline Deletion steps as track changes
-            let offlineDeletion = this.mod.editor.view.state.tr
-            offlineconflictdeletion.forEach((step,index)=>{
-                const offlineMapping = new Mapping(rebasedTrackedTr.mapping.maps.slice(parseInt(step[1]),rebasedTr.steps.length))
-                offlineMapping.appendMapping(offlineDeletion.mapping)
-                const mappedStep = step[0].map(offlineMapping)
-                if(mappedStep)
-                    offlineDeletion.maybeStep(mappedStep)
-            })
-            console.log("YY:",offlineDeletion)
-            let offlineDeletionTr = trackedTransaction(
-                offlineDeletion,
-                this.mod.editor.view.state,
-                this.mod.editor.user,
-                false,
-                Date.now() - this.mod.editor.clientTimeAdjustment
-            )
-            offlineDeletionTr.setMeta('remote',true)
-            console.log("XX:",offlineDeletionTr)
-            this.mod.editor.view.dispatch(offlineDeletionTr)
+            // // Enable/Disable tracked changes based on some conditions
+            // let rebasedTrackedTr
+            // if (
+            //     ['write', 'write-tracked'].includes(this.mod.editor.docInfo.access_rights) &&
+            //     (
+            //         unconfirmedTr.steps.length > this.trackOfflineLimit ||
+            //         lostTr.steps.length > this.remoteTrackOfflineLimit
+            //     )
+            // ) {
+            //     tracked = true
+            //     // Either this user has made 50 changes since going offline,
+            //     // or the document has 20 changes to it. Therefore we add tracking
+            //     // to the changes of this user and ask user to clean up.
+            //     rebasedTrackedTr = trackedTransaction(
+            //         rebasedTr,
+            //         this.mod.editor.view.state,
+            //         this.mod.editor.user,
+            //         false,
+            //         Date.now() - this.mod.editor.clientTimeAdjustment
+            //     )
+            //     rebasedTrackedTr.setMeta('remote',true)
+            // } else {
+            //     tracked = false
+            //     rebasedTrackedTr = rebasedTr
+            // }
+
+
+            // const usedImages = [],
+            //     usedBibs = []
+            // const footnoteFind = (node, usedImages, usedBibs) => {
+            //     if (node.name==='citation') {
+            //         node.attrs.references.forEach(ref => usedBibs.push(parseInt(ref.id)))
+            //     } else if (node.name==='figure' && node.attrs.image) {
+            //         usedImages.push(node.attrs.image)
+            //     } else if (node.content) {
+            //         node.content.forEach(subNode => footnoteFind(subNode, usedImages, usedBibs))
+            //     }
+            // }
+
+            // // Looking at rebased doc so that it contains the merged document !!!
+            // rebasedTr.doc.descendants(node => {
+            //     if (node.type.name==='citation') {
+            //         node.attrs.references.forEach(ref => usedBibs.push(parseInt(ref.id)))
+            //     } else if (node.type.name==='figure' && node.attrs.image) {
+            //         usedImages.push(node.attrs.image)
+            //     } else if (node.type.name==='footnote' && node.attrs.footnote) {
+            //         node.attrs.footnote.forEach(subNode => footnoteFind(subNode, usedImages, usedBibs))
+            //     }
+            // })
+            
+            // const oldBibDB = this.mod.editor.mod.db.bibDB.db
+            // this.mod.editor.mod.db.bibDB.setDB(data.doc.bibliography)
+            // usedBibs.forEach(id => {
+            //     if (!this.mod.editor.mod.db.bibDB.db[id] && oldBibDB[id]) {
+            //         this.mod.editor.mod.db.bibDB.updateReference(id, oldBibDB[id])
+            //     }
+            // })
+            // const oldImageDB = this.mod.editor.mod.db.imageDB.db
+            // this.mod.editor.mod.db.imageDB.setDB(data.doc.images)
+            // usedImages.forEach(id => {
+            //     if (!this.mod.editor.mod.db.imageDB.db[id] && oldImageDB[id]) {
+            //         // If the image was uploaded by the offline user we know that he may not have deleted it so we can resend it normally
+            //         if(Object.keys(this.mod.editor.app.imageDB.db).includes(id)){
+            //             this.mod.editor.mod.db.imageDB.setImage(id, oldImageDB[id])
+            //         } else {
+            //             // If the image was uploaded by someone else , to set the image we have to reupload it again as there is backend check to associate who can add an image with the image owner.
+            //             this.mod.editor.mod.db.imageDB.reUploadImage(id,oldImageDB[id].image,oldImageDB[id].title,oldImageDB[id].copyright)
+
+            //         }
+            //     }
+            // })
+
+
+            // this.mod.editor.docInfo.version = data.doc.v
+            // this.mod.editor.view.dispatch(rebasedTrackedTr)
+            // console.log("Rebased TrackedTr",rebasedTrackedTr)
+
+            // // Now accept all tracked insertions that are conflicting because when we have tracked delete on top the tracked insertions get deleted.
+            // let rangesToBeAccepted = []
+            // Object.keys(offlineConflictingInsertionIndex).forEach((index)=>{
+            //     if(offlineConflictingInsertionIndex[index].step){
+            //         let from = offlineConflictingInsertionIndex[index].step.from
+            //         const rebasedIndex = offlineConflictingInsertionIndex[index].rebasedIndex
+            //         from = rebasedTrackedTr.mapping.slice(rebasedIndex+1,rebasedTrackedTr.steps.length).map(from)
+
+            //         // To handle deletion when they're tracked
+            //         if(tracked)from = DeletionMapping.map(from)
+            //         const to = from+offlineConflictingInsertionIndex[index].step.slice.size
+            //         let rangeModified = false
+
+            //         // To handle overlapping steps
+            //         rangesToBeAccepted.forEach(range=>{
+            //             if(from>=range.from && from<=range.to){
+            //                 range.to+=offlineConflictingInsertionIndex[index].step.slice.size
+            //                 rangeModified = true
+            //             }
+            //         })
+            //         if(!rangeModified){
+            //             rangesToBeAccepted.push({'from':from,'to':to})
+            //         }
+            //     }
+            // })
+
+            // rangesToBeAccepted.forEach(range=>{
+            //     console.log(range)
+            //     acceptAll(this.mod.editor.view,range.from,range.to)
+            // })
+
+            // // Mark the conflicting online Deletion steps as track changes
+            // let OnlineDeletionTr = this.mod.editor.view.state.tr
+            // OnlineDeletionSteps.forEach(step=>{
+            //     const updatedMapping = new Mapping(rebasedTrackedTr.mapping.maps.slice(0,rebasedTrackedTr.steps.length))
+            //     updatedMapping.appendMapping(OnlineDeletionTr.mapping)
+            //     const mappedStep = step.map(updatedMapping)
+            //     console.log(mappedStep,OnlineDeletionTr.maybeStep(mappedStep))
+            //     if(mappedStep)
+            //         OnlineDeletionTr.maybeStep(mappedStep)
+            // })
+            // let onlineDeletionTrackedTr = trackedTransaction(
+            //     OnlineDeletionTr,
+            //     this.mod.editor.view.state,
+            //     this.mod.editor.user,
+            //     false,
+            //     Date.now() - this.mod.editor.clientTimeAdjustment
+            // )
+            // onlineDeletionTrackedTr.setMeta('remote',true)
+            // this.mod.editor.view.dispatch(onlineDeletionTrackedTr)
+            // console.log("G:",OnlineDeletionTr)
+            // console.log("X:",onlineDeletionTrackedTr)
+            
+            // // Mark the conflicting offline Deletion steps as track changes
+            // let offlineDeletion = this.mod.editor.view.state.tr
+            // offlineconflictdeletion.forEach((step,index)=>{
+            //     const offlineMapping = new Mapping(rebasedTrackedTr.mapping.maps.slice(parseInt(step[1]),rebasedTr.steps.length))
+            //     offlineMapping.appendMapping(offlineDeletion.mapping)
+            //     const mappedStep = step[0].map(offlineMapping)
+            //     if(mappedStep)
+            //         offlineDeletion.maybeStep(mappedStep)
+            // })
+            // console.log("YY:",offlineDeletion)
+            // let offlineDeletionTr = trackedTransaction(
+            //     offlineDeletion,
+            //     this.mod.editor.view.state,
+            //     this.mod.editor.user,
+            //     false,
+            //     Date.now() - this.mod.editor.clientTimeAdjustment
+            // )
+            // offlineDeletionTr.setMeta('remote',true)
+            // console.log("XX:",offlineDeletionTr)
+            // this.mod.editor.view.dispatch(offlineDeletionTr)
     
-            if (tracked) {
-                showSystemMessage(
-                    gettext(
-                        'The document was modified substantially by other users while you were offline. We have merged your changes in as tracked changes. You should verify that your edits still make sense.'
-                    )
-                )
-            }
-            this.mod.editor.mod.footnotes.fnEditor.renderAllFootnotes()
+            // if (tracked) {
+            //     showSystemMessage(
+            //         gettext(
+            //             'The document was modified substantially by other users while you were offline. We have merged your changes in as tracked changes. You should verify that your edits still make sense.'
+            //         )
+            //     )
+            // }
+            // this.mod.editor.mod.footnotes.fnEditor.renderAllFootnotes()
 
         } else {
             // The server seems to have lost some data. We reset.

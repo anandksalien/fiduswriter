@@ -729,3 +729,41 @@ export const insertion = {
         }]
     }
 }
+
+export const DiffMark = {
+    attrs: {
+        diff:{
+          default:""
+        },
+        steps:{
+          default:[]
+        },
+        from:{
+          default:''
+        },
+        to:{
+          default:''
+        }
+    },
+    parseDOM: [
+        {
+            tag: "span",
+            getAttrs(dom) {
+                return {
+                diff:node.attrs.diff,
+                steps:node.attrs.steps,
+                }
+            }
+        }
+    ],
+    toDOM(node) {
+        return ['span', {
+            class: `diff ${node.attrs.diff}`,
+            'data-diff':node.attrs.diff,
+            'data-steps':node.attrs.steps,
+            'data-from':node.attrs.from,
+            'data-to':node.attrs.to
+        }]
+    }
+
+}
