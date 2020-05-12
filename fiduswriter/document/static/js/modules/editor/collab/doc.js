@@ -185,7 +185,7 @@ export class ModCollabDoc {
         let condensedSteps = [] , lastSuccessfulMerge = mergedStep
         for(let i =1 ;i<tr.steps.length ; i++){
             mergedStep = mergedStep.merge(tr.steps[i])
-            if(mergedStep === null){
+            if(mergedStep === null || mergedStep === undefined){
                 condensedSteps.push(lastSuccessfulMerge)
                 mergedStep = tr.steps[i]
                 lastSuccessfulMerge = mergedStep
@@ -265,11 +265,11 @@ export class ModCollabDoc {
         this.mod.editor.view.dispatch(newTr)        
     }
 
-    openDiffEditors(CpDoc,offlineDoc,onlineDoc,offlineTr,onlineTr,data){
+    openDiffEditors(CpDoc,offlineDoc,onlineDoc,offlineTr,onlineTr,data,conflicts){
         const dia = new Dialog({
             id: 'editor-merge-view',
             title: gettext("Merging Offline Document"),
-            body: `<div style="display:flex;"><div id="editor-diff-1" style="float:left;"></div><div id="editor-diff"></div><div id="editor-diff-2" style="float:right;"></div></div>`,
+            body: `<div class= "user-contents" style="display:flex;"><div id="editor-diff-1" style="float:left;padding:15px;"></div><div id="editor-diff" style="padding:15px;"></div><div id="editor-diff-2" style="float:right;padding:15px;"></div></div>`,
             height:500,
             width:1400,
             buttons:[{ 
@@ -277,9 +277,14 @@ export class ModCollabDoc {
                 text: "Merge Complete",
                 classes: 'fw-dark',
                 click: () => {
+                    // Remove all diff related marks
+                    const DiffRemovalTr = view2.state.tr
+                    DiffRemovalTr.removeMark(0,view2.state.doc.content.size,this.mod.editor.schema.marks.DiffMark)
+                    const newState = view2.state.apply(DiffRemovalTr)
+                    view2.updateState(newState)
+        
                     this.applyChangesToEditor(recreateTransform(onlineDoc,view2.state.doc),data,onlineDoc)
                     dia.close()
-                    // console.log()
                 }
             }]
         })
@@ -287,10 +292,35 @@ export class ModCollabDoc {
 
         console.log("ONLINE",onlineTr)
         console.log("OFFLINE",offlineTr)
+
+        // Bind the plugins to the respective views
+        const plugins = this.mod.editor.statePlugins.map(plugin => {
+            if (plugin[1]) {
+                return plugin[0](plugin[1](offlineDoc))
+            } else {
+                return plugin[0]()
+            }
+        })
+        const plugins2 = this.mod.editor.statePlugins.map(plugin => {
+            if (plugin[1]) {
+                return plugin[0](plugin[1](CpDoc))
+            } else {
+                return plugin[0]()
+            }
+        })
+        const plugins3 = this.mod.editor.statePlugins.map(plugin => {
+            if (plugin[1]) {
+                return plugin[0](plugin[1](onlineDoc))
+            } else {
+                return plugin[0]()
+            }
+        })
+        // const conflict_dict = {}
         const view1 = new EditorView(document.getElementById('editor-diff-1'), {
             state: EditorState.create({
                 schema: this.mod.editor.schema,
                 doc: offlineDoc,
+                plugins:plugins,
             })
           })
           
@@ -298,16 +328,26 @@ export class ModCollabDoc {
             state: EditorState.create({
                 schema: this.mod.editor.schema,
                 doc: CpDoc,
+                plugins:plugins2
             })
         })
         const view3 = new EditorView(document.getElementById('editor-diff-2'), {
             state: EditorState.create({
                 schema: this.mod.editor.schema,
                 doc: onlineDoc,
+                plugins:plugins3
             })
         })
 
         const commonMaps = new Mapping()
+        const conflict_dict = {}
+        for(let conflict in conflicts){
+            if(conflict[0] in Object.keys(conflict_dict)){
+                conflict_dict[conflict].push(conflict[1])
+            } else {
+                conflict_dict[conflict] = [conflict[1]]
+            }
+        }
 
         const changeset = this.changeSet(offlineTr)
         console.log(changeset)
@@ -475,6 +515,8 @@ export class ModCollabDoc {
             for(let stepIndex of steps){
                 let stepMaps = onlineTr.mapping.maps.slice(0,stepIndex).map(map=>map.invert())
                 let revMapping = new Mapping(stepMaps)
+                console.log(revMapping,commonMaps)
+                console.log(onlineTr.steps[stepIndex],onlineTr.steps[stepIndex].map(revMapping),onlineTr.steps[stepIndex].map(revMapping).map(commonMaps))
                 tra.step(onlineTr.steps[stepIndex].map(revMapping).map(commonMaps))
             }
 
@@ -535,7 +577,6 @@ export class ModCollabDoc {
             const unconfirmedCondensedTr = confirmedState.tr
             condensedSteps.forEach(step=>unconfirmedCondensedTr.step(step))
 
-            this.openDiffEditors(this.mod.editor.docInfo.confirmedDoc,unconfirmedTr.doc,toDoc,unconfirmedCondensedTr,lostTr,data)
 
             // Keep receving the updates.
             const lostState = EditorState.create({doc: toDoc})
@@ -553,7 +594,10 @@ export class ModCollabDoc {
             // Render All footnotes
             this.mod.editor.mod.footnotes.fnEditor.renderAllFootnotes()
             this.mod.editor.docInfo.version = data.doc.v
-            // // Modify the online transactions to have simple replace steps instead of inserting and deleting at same time
+            
+            // this.openDiffEditors(confirmedState.doc,unconfirmedTr.doc,toDoc,unconfirmedCondensedTr,lostTr,data)
+
+            // Modify the online transactions to have simple replace steps instead of inserting and deleting at same time
             // const modifiedlostTr = new Transform(this.mod.editor.docInfo.confirmedDoc)
             // lostTr.steps.forEach(step=>{
             //     if(step instanceof ReplaceStep && step.slice.size>0 && step.from !== step.to){
@@ -570,6 +614,71 @@ export class ModCollabDoc {
             // })
             // lostTr = modifiedlostTr
 
+            // Find conflicts
+            console.log(unconfirmedCondensedTr,lostTr)
+            let conflicts = this.findConflicts(unconfirmedCondensedTr,lostTr)
+            let onlineConflictingDeletionIndex = [] , offlineConflictingDeletionIndex = []
+
+            // Store the indexes of conflicting deletion steps
+            console.log("conflicts!!!",conflicts)
+            conflicts.forEach(conflict=>{
+                if(!offlineConflictingDeletionIndex.includes(conflict[0])){
+                    offlineConflictingDeletionIndex.push(conflict[0])
+                }
+                if(!onlineConflictingDeletionIndex.includes(conflict[2])){
+                    onlineConflictingDeletionIndex.push(conflict[2])
+                }
+            })
+
+            // Create a Tr without conflicts Online
+            const OnlineTrWithoutConflicts = confirmedState.tr
+            const onlineConflicts = confirmedState.tr
+            const upMapping = new Mapping()
+            lostTr.steps.forEach((step,index)=>{
+                if(!onlineConflictingDeletionIndex.includes(index)){
+                    if(step.map(upMapping))
+                        OnlineTrWithoutConflicts.step(step.map(upMapping))
+                } else if (onlineConflictingDeletionIndex.includes(index)){
+                    upMapping.appendMap(step.getMap().invert())
+                    onlineConflicts.maybeStep(step)
+                }
+            })
+
+            // Create a Tr without conflicts Offline
+            const OfflineTrWithoutConflicts = confirmedState.tr
+            const OfflineConflicts = confirmedState.tr
+            const ipMapping = new Mapping()
+            unconfirmedCondensedTr.steps.forEach((step,index)=>{
+                if(!offlineConflictingDeletionIndex.includes(index)){
+                    OfflineTrWithoutConflicts.step(step.map(ipMapping))
+                } else if ( offlineConflictingDeletionIndex.includes(index) ){
+                    ipMapping.appendMap(step.getMap().invert())
+                    OfflineConflicts.maybeStep(step)
+                }
+            })
+
+            // Create a doc from the confirmed state
+            const {state: newconfirmedState, transactions} = confirmedState.applyTransaction(OnlineTrWithoutConflicts)
+
+            //Rebase the offline Transaction
+            const rebasedOfflineTr = newconfirmedState.tr
+            const maps = new Mapping([].concat(OfflineTrWithoutConflicts.mapping.maps.slice().map(map=>map.invert())).concat(OnlineTrWithoutConflicts.mapping.maps))
+            OfflineTrWithoutConflicts.steps.forEach((step,index)=>{
+                const mapped = step.map(maps.slice(OfflineTrWithoutConflicts.steps.length - index))
+                if (mapped && !rebasedOfflineTr.maybeStep(mapped).failed) {
+                    maps.appendMap(mapped.getMap())
+                    maps.setMirror(OfflineTrWithoutConflicts.steps.length-index-1,(OfflineTrWithoutConflicts.steps.length+OnlineTrWithoutConflicts.steps.length+rebasedOfflineTr.steps.length-1))
+                }
+            })
+
+            // Apply the offline Transaction
+            const {state: new2confirmedState, transactions2} = newconfirmedState.applyTransaction(rebasedOfflineTr)
+
+            console.log("HET",OnlineTrWithoutConflicts,OfflineTrWithoutConflicts,confirmedState,new2confirmedState,newconfirmedState)
+
+            // Open the 2 editors
+            this.openDiffEditors(new2confirmedState.doc,unconfirmedCondensedTr.doc,toDoc,OfflineConflicts,onlineConflicts,data,conflicts)
+            // // 
             // let tracked
             // console.log("Lost online",lostTr)  
             
@@ -587,20 +696,8 @@ export class ModCollabDoc {
             // console.log(JSON.parse(JSON.stringify(conflicts)))
 
             // let rollbackOnlineConflictDeletionTr = this.mod.editor.view.state.tr
-            // let onlineConflictingDeltionIndex = [] , OnlineDeletionSteps = [] , offlineConflictingDeletionIndex = []  , offlineConflictingInsertionIndex= {}
+            //
 
-            // // Store the indexes of conflicting deletion steps
-            // conflicts.forEach(conflict=>{
-            //     if(!offlineConflictingDeletionIndex.includes(conflict[0]) && conflict[1] == "deletion"){
-            //         offlineConflictingDeletionIndex.push(conflict[0])
-            //     }
-            //     if(!onlineConflictingDeltionIndex.includes(conflict[2]) && conflict[3] == "deletion"){
-            //         onlineConflictingDeltionIndex.push(conflict[2])
-            //     }
-            //     if(!Object.keys(offlineConflictingInsertionIndex).includes(String(conflict[0])) && conflict[1] == "insertion"){
-            //         offlineConflictingInsertionIndex[conflict[0]] = {}
-            //     }
-            // })
 
             // // Rollback the online conflicting steps
             // lostOnlineTr.steps.forEach((step,index)=>{
