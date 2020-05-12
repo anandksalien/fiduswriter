@@ -207,13 +207,86 @@ export class ModCollabDoc {
         return changes
     }
 
-    openDiffEditors(CpDoc,offlineDoc,onlineDoc,offlineTr,onlineTr){
+    applyChangesToEditor(tr,data,onlineDoc){
+        const usedImages = [],
+            usedBibs = []
+        const footnoteFind = (node, usedImages, usedBibs) => {
+            if (node.name==='citation') {
+                node.attrs.references.forEach(ref => usedBibs.push(parseInt(ref.id)))
+            } else if (node.name==='figure' && node.attrs.image) {
+                usedImages.push(node.attrs.image)
+            } else if (node.content) {
+                node.content.forEach(subNode => footnoteFind(subNode, usedImages, usedBibs))
+            }
+        }
+
+        // Looking at rebased doc so that it contains the merged document !!!
+        tr.doc.descendants(node => {
+            if (node.type.name==='citation') {
+                node.attrs.references.forEach(ref => usedBibs.push(parseInt(ref.id)))
+            } else if (node.type.name==='figure' && node.attrs.image) {
+                usedImages.push(node.attrs.image)
+            } else if (node.type.name==='footnote' && node.attrs.footnote) {
+                node.attrs.footnote.forEach(subNode => footnoteFind(subNode, usedImages, usedBibs))
+            }
+        })
+        
+        const oldBibDB = this.mod.editor.mod.db.bibDB.db
+        this.mod.editor.mod.db.bibDB.setDB(data.doc.bibliography)
+        usedBibs.forEach(id => {
+            if (!this.mod.editor.mod.db.bibDB.db[id] && oldBibDB[id]) {
+                this.mod.editor.mod.db.bibDB.updateReference(id, oldBibDB[id])
+            }
+        })
+        const oldImageDB = this.mod.editor.mod.db.imageDB.db
+        this.mod.editor.mod.db.imageDB.setDB(data.doc.images)
+        usedImages.forEach(id => {
+            if (!this.mod.editor.mod.db.imageDB.db[id] && oldImageDB[id]) {
+                // If the image was uploaded by the offline user we know that he may not have deleted it so we can resend it normally
+                if(Object.keys(this.mod.editor.app.imageDB.db).includes(id)){
+                    this.mod.editor.mod.db.imageDB.setImage(id, oldImageDB[id])
+                } else {
+                    // If the image was uploaded by someone else , to set the image we have to reupload it again as there is backend check to associate who can add an image with the image owner.
+                    this.mod.editor.mod.db.imageDB.reUploadImage(id,oldImageDB[id].image,oldImageDB[id].title,oldImageDB[id].copyright)
+                }
+            }
+        })
+
+        const OnlineStepsLost = recreateTransform(onlineDoc,this.mod.editor.view.state.doc)
+        const newTr = this.mod.editor.view.state.tr
+        const maps = new Mapping([].concat(tr.mapping.maps.slice().map(map=>map.invert())).concat(OnlineStepsLost.mapping.maps))
+        tr.steps.forEach((step,index)=>{
+            const mapped = step.map(maps.slice(tr.steps.length - index))
+            if (mapped && !newTr.maybeStep(mapped).failed) {
+                maps.appendMap(mapped.getMap())
+                maps.setMirror(tr.steps.length-index-1,(tr.steps.length+OnlineStepsLost.steps.length+newTr.steps.length-1))
+            }
+        })
+        this.mod.editor.view.dispatch(newTr)        
+    }
+
+    openDiffEditors(CpDoc,offlineDoc,onlineDoc,offlineTr,onlineTr,data){
         const dia = new Dialog({
             id: 'editor-merge-view',
             title: gettext("Merging Offline Document"),
             body: `<div style="display:flex;"><div id="editor-diff-1" style="float:left;"></div><div id="editor-diff"></div><div id="editor-diff-2" style="float:right;"></div></div>`,
+            height:500,
+            width:1400,
+            buttons:[{ 
+                // Update
+                text: "Merge Complete",
+                classes: 'fw-dark',
+                click: () => {
+                    this.applyChangesToEditor(recreateTransform(onlineDoc,view2.state.doc),data,onlineDoc)
+                    dia.close()
+                    // console.log()
+                }
+            }]
         })
         dia.open()
+
+        console.log("ONLINE",onlineTr)
+        console.log("OFFLINE",offlineTr)
         const view1 = new EditorView(document.getElementById('editor-diff-1'), {
             state: EditorState.create({
                 schema: this.mod.editor.schema,
@@ -237,6 +310,7 @@ export class ModCollabDoc {
         const commonMaps = new Mapping()
 
         const changeset = this.changeSet(offlineTr)
+        console.log(changeset)
         changeset.changes.forEach(change=>{
         if(change.inserted.length>0){
             const trackedTr = view1.state.tr
@@ -248,13 +322,17 @@ export class ModCollabDoc {
             view1.updateState(newState)
         } if (change.deleted.length>0){
             const trackedTr = view2.state.tr
-            const deletionMark = this.mod.editor.schema.marks.DiffMark.create({diff:"offline-deleted"})
+            const steps_involved = []
+            change.deleted.forEach(deletion=>steps_involved.push(deletion.data.step))
+            const deletionMark = this.mod.editor.schema.marks.DiffMark.create({diff:"offline-deleted",steps:JSON.stringify(steps_involved),from:change.fromA,to:change.toA})
             trackedTr.addMark(change.fromA,change.toA,deletionMark)  
-            view2.dispatch(trackedTr)
+            const newState = view2.state.apply(trackedTr)
+            view2.updateState(newState)
         }
         })
 
         const changeset2 = this.changeSet(onlineTr)
+        console.log(changeset2)
         changeset2.changes.forEach(change=>{
         if(change.inserted.length>0){
             const trackedTr = view3.state.tr
@@ -266,9 +344,12 @@ export class ModCollabDoc {
             view3.updateState(newState)
         } if (change.deleted.length>0){
             const trackedTr = view2.state.tr
-            const deletionMark = this.mod.editor.schema.marks.DiffMark.create({diff:"online-deleted"})
+            const steps_involved = []
+            change.deleted.forEach(deletion=>steps_involved.push(deletion.data.step))
+            const deletionMark = this.mod.editor.schema.marks.DiffMark.create({diff:"online-deleted",steps:JSON.stringify(steps_involved),from:change.fromA,to:change.toA})
             trackedTr.addMark(change.fromA,change.toA,deletionMark)  
-            view2.dispatch(trackedTr)
+            const newState = view2.state.apply(trackedTr)
+            view2.updateState(newState)
         }
         })
 
@@ -279,13 +360,15 @@ export class ModCollabDoc {
             const from = element.dataset.from
             const to = element.dataset.to
             const steps = JSON.parse(element.dataset.steps)
-            for(let stepIndex of steps)
-                tra.step(offlineTr.steps[stepIndex].map(commonMaps))
+            for(let stepIndex of steps){
+                let stepMaps = onlineTr.mapping.maps.slice(0,stepIndex).map(map=>map.invert())
+                let revMapping = new Mapping(stepMaps)
+                tra.step(offlineTr.steps[stepIndex].map(revMapping).map(commonMaps))
+            }
 
             // Put the proper mark steps back again
             for(let step of offlineTr.steps){
                 if(step instanceof AddMarkStep || step instanceof RemoveMarkStep){
-                    console.log("MARK STEP")
                     if(step.from>=from && step.to <= to){
                     tra.step(step)
                     }
@@ -294,9 +377,15 @@ export class ModCollabDoc {
             const newState = view2.state.apply(tra)
             view2.updateState(newState)
             commonMaps.appendMapping(tra.mapping)
+
+            // Remove the insertion mark!!
+            const trackedTr = view1.state.tr
+            trackedTr.removeMark(from,to,this.mod.editor.schema.marks.DiffMark)
+            const newState1 = view1.state.apply(trackedTr)
+            view1.updateState(newState1)
+
         })
         }
-
 
         const onlineInsertedElements = document.querySelectorAll("span.online-inserted")
         for(let element of onlineInsertedElements){
@@ -305,13 +394,93 @@ export class ModCollabDoc {
             const from = element.dataset.from
             const to = element.dataset.to
             const steps = JSON.parse(element.dataset.steps)
-            for(let stepIndex of steps)
-                tra.step(onlineTr.steps[stepIndex].map(commonMaps))
+            for(let stepIndex of steps){
+                let stepMaps = onlineTr.mapping.maps.slice(0,stepIndex).map(map=>map.invert())
+                let revMapping = new Mapping(stepMaps)
+                console.log(revMapping,onlineTr.steps[stepIndex].map(revMapping))
+                tra.step(onlineTr.steps[stepIndex].map(revMapping).map(commonMaps))
+            }
 
             // Put the proper mark steps back again
             for(let step of onlineTr.steps){
                 if(step instanceof AddMarkStep || step instanceof RemoveMarkStep){
-                    console.log("MARK STEP")
+                    if(step.from>=from && step.to <= to){
+                    tra.step(step)
+                    }
+                }
+            }
+            console.log(tra)
+            const newState = view2.state.apply(tra)
+            view2.updateState(newState)
+            commonMaps.appendMapping(tra.mapping)
+
+            // Remove the insertion mark!!
+            const trackedTr = view3.state.tr
+            trackedTr.removeMark(from,to,this.mod.editor.schema.marks.DiffMark)
+            const newState1 = view3.state.apply(trackedTr)
+            view3.updateState(newState1)
+
+        })
+        }
+
+        const offlineDeletedElements = document.querySelectorAll("span.offline-deleted")
+        for(let element of offlineDeletedElements){
+        element.addEventListener("click",()=>{
+            const from = element.dataset.from
+            const to = element.dataset.to
+            const steps = JSON.parse(element.dataset.steps)
+
+            // Remove the deletion mark!!
+            const trackedTr = view2.state.tr
+            trackedTr.removeMark(from,to,this.mod.editor.schema.marks.DiffMark)
+            const newState1 = view2.state.apply(trackedTr)
+            view2.updateState(newState1)
+
+            const tra = view2.state.tr
+            for(let stepIndex of steps){
+                let stepMaps = onlineTr.mapping.maps.slice(0,stepIndex).map(map=>map.invert())
+                let revMapping = new Mapping(stepMaps)
+                tra.step(offlineTr.steps[stepIndex].map(revMapping).map(commonMaps))
+            }
+
+            // Put the proper mark steps back again
+            for(let step of offlineTr.steps){
+                if(step instanceof AddMarkStep || step instanceof RemoveMarkStep){
+                    if(step.from>=from && step.to <= to){
+                    tra.step(step)
+                    }
+                }
+            }
+            console.log("TRA",tra)
+            const newState = view2.state.apply(tra)
+            view2.updateState(newState)
+            commonMaps.appendMapping(tra.mapping)
+        })
+        }
+
+        const onlineDeletedElements = document.querySelectorAll("span.online-deleted")
+        for(let element of onlineDeletedElements){
+        element.addEventListener("click",()=>{
+            const from = element.dataset.from
+            const to = element.dataset.to
+            const steps = JSON.parse(element.dataset.steps)
+
+            // Remove the deletion mark!!
+            const trackedTr = view2.state.tr
+            trackedTr.removeMark(from,to,this.mod.editor.schema.marks.DiffMark)
+            const newState1 = view2.state.apply(trackedTr)
+            view2.updateState(newState1)
+
+            const tra = view2.state.tr
+            for(let stepIndex of steps){
+                let stepMaps = onlineTr.mapping.maps.slice(0,stepIndex).map(map=>map.invert())
+                let revMapping = new Mapping(stepMaps)
+                tra.step(onlineTr.steps[stepIndex].map(revMapping).map(commonMaps))
+            }
+
+            // Put the proper mark steps back again
+            for(let step of onlineTr.steps){
+                if(step instanceof AddMarkStep || step instanceof RemoveMarkStep){
                     if(step.from>=from && step.to <= to){
                     tra.step(step)
                     }
@@ -366,8 +535,24 @@ export class ModCollabDoc {
             const unconfirmedCondensedTr = confirmedState.tr
             condensedSteps.forEach(step=>unconfirmedCondensedTr.step(step))
 
-            this.openDiffEditors(this.mod.editor.docInfo.confirmedDoc,unconfirmedTr.doc,toDoc,unconfirmedCondensedTr,lostTr)
+            this.openDiffEditors(this.mod.editor.docInfo.confirmedDoc,unconfirmedTr.doc,toDoc,unconfirmedCondensedTr,lostTr,data)
 
+            // Keep receving the updates.
+            const lostState = EditorState.create({doc: toDoc})
+            const lostOnlineTr = receiveTransaction(
+                this.mod.editor.view.state,
+                lostTr.steps,
+                lostTr.steps.map(_step => 'remote')
+            )
+            this.mod.editor.view.dispatch(lostOnlineTr)
+            
+            // Set Confirmed DOC
+            this.mod.editor.docInfo.confirmedDoc = lostState.doc
+            this.mod.editor.docInfo.confirmedJson = toMiniJSON(this.mod.editor.docInfo.confirmedDoc.firstChild)
+            
+            // Render All footnotes
+            this.mod.editor.mod.footnotes.fnEditor.renderAllFootnotes()
+            this.mod.editor.docInfo.version = data.doc.v
             // // Modify the online transactions to have simple replace steps instead of inserting and deleting at same time
             // const modifiedlostTr = new Transform(this.mod.editor.docInfo.confirmedDoc)
             // lostTr.steps.forEach(step=>{
@@ -386,17 +571,6 @@ export class ModCollabDoc {
             // lostTr = modifiedlostTr
 
             // let tracked
-            // const lostState = EditorState.create({doc: toDoc})
-            // const lostOnlineTr = receiveTransaction(
-            //     this.mod.editor.view.state,
-            //     lostTr.steps,
-            //     lostTr.steps.map(_step => 'remote')
-            // )
-            // this.mod.editor.view.dispatch(lostOnlineTr)
-            
-            // // Set Confirmed DOC
-            // this.mod.editor.docInfo.confirmedDoc = lostState.doc
-            // this.mod.editor.docInfo.confirmedJson = toMiniJSON(this.mod.editor.docInfo.confirmedDoc.firstChild)
             // console.log("Lost online",lostTr)  
             
             // // Try to condense the offline steps
@@ -522,54 +696,7 @@ export class ModCollabDoc {
             // }
 
 
-            // const usedImages = [],
-            //     usedBibs = []
-            // const footnoteFind = (node, usedImages, usedBibs) => {
-            //     if (node.name==='citation') {
-            //         node.attrs.references.forEach(ref => usedBibs.push(parseInt(ref.id)))
-            //     } else if (node.name==='figure' && node.attrs.image) {
-            //         usedImages.push(node.attrs.image)
-            //     } else if (node.content) {
-            //         node.content.forEach(subNode => footnoteFind(subNode, usedImages, usedBibs))
-            //     }
-            // }
-
-            // // Looking at rebased doc so that it contains the merged document !!!
-            // rebasedTr.doc.descendants(node => {
-            //     if (node.type.name==='citation') {
-            //         node.attrs.references.forEach(ref => usedBibs.push(parseInt(ref.id)))
-            //     } else if (node.type.name==='figure' && node.attrs.image) {
-            //         usedImages.push(node.attrs.image)
-            //     } else if (node.type.name==='footnote' && node.attrs.footnote) {
-            //         node.attrs.footnote.forEach(subNode => footnoteFind(subNode, usedImages, usedBibs))
-            //     }
-            // })
-            
-            // const oldBibDB = this.mod.editor.mod.db.bibDB.db
-            // this.mod.editor.mod.db.bibDB.setDB(data.doc.bibliography)
-            // usedBibs.forEach(id => {
-            //     if (!this.mod.editor.mod.db.bibDB.db[id] && oldBibDB[id]) {
-            //         this.mod.editor.mod.db.bibDB.updateReference(id, oldBibDB[id])
-            //     }
-            // })
-            // const oldImageDB = this.mod.editor.mod.db.imageDB.db
-            // this.mod.editor.mod.db.imageDB.setDB(data.doc.images)
-            // usedImages.forEach(id => {
-            //     if (!this.mod.editor.mod.db.imageDB.db[id] && oldImageDB[id]) {
-            //         // If the image was uploaded by the offline user we know that he may not have deleted it so we can resend it normally
-            //         if(Object.keys(this.mod.editor.app.imageDB.db).includes(id)){
-            //             this.mod.editor.mod.db.imageDB.setImage(id, oldImageDB[id])
-            //         } else {
-            //             // If the image was uploaded by someone else , to set the image we have to reupload it again as there is backend check to associate who can add an image with the image owner.
-            //             this.mod.editor.mod.db.imageDB.reUploadImage(id,oldImageDB[id].image,oldImageDB[id].title,oldImageDB[id].copyright)
-
-            //         }
-            //     }
-            // })
-
-
-            // this.mod.editor.docInfo.version = data.doc.v
-            // this.mod.editor.view.dispatch(rebasedTrackedTr)
+            // // this.mod.editor.view.dispatch(rebasedTrackedTr)
             // console.log("Rebased TrackedTr",rebasedTrackedTr)
 
             // // Now accept all tracked insertions that are conflicting because when we have tracked delete on top the tracked insertions get deleted.
@@ -653,7 +780,7 @@ export class ModCollabDoc {
             //         )
             //     )
             // }
-            // this.mod.editor.mod.footnotes.fnEditor.renderAllFootnotes()
+            
 
         } else {
             // The server seems to have lost some data. We reset.
