@@ -401,19 +401,20 @@ export class ModCollabDoc {
             const to = element.dataset.to
             const steps = JSON.parse(element.dataset.steps)
             for(let stepIndex of steps){
-                let stepMaps = onlineTr.mapping.maps.slice(0,stepIndex).map(map=>map.invert())
+                let stepMaps = offlineTr.mapping.maps.slice(0,stepIndex).map(map=>map.invert())
                 let revMapping = new Mapping(stepMaps)
                 tra.step(offlineTr.steps[stepIndex].map(revMapping).map(commonMaps))
-            }
-
-            // Put the proper mark steps back again
-            for(let step of offlineTr.steps){
-                if(step instanceof AddMarkStep || step instanceof RemoveMarkStep){
-                    if(step.from>=from && step.to <= to){
-                    tra.step(step)
+                
+                // Put the proper mark steps back again
+                for(let step of offlineTr.steps){
+                    if(step instanceof AddMarkStep || step instanceof RemoveMarkStep){
+                        if(step.from>=from && step.to <= to){
+                            tra.step(step.map(revMapping).map(commonMaps))
+                        }
                     }
                 }
             }
+
             const newState = view2.state.apply(tra)
             view2.updateState(newState)
             commonMaps.appendMapping(tra.mapping)
@@ -439,17 +440,16 @@ export class ModCollabDoc {
                 let revMapping = new Mapping(stepMaps)
                 console.log(revMapping,onlineTr.steps[stepIndex].map(revMapping))
                 tra.step(onlineTr.steps[stepIndex].map(revMapping).map(commonMaps))
-            }
-
-            // Put the proper mark steps back again
-            for(let step of onlineTr.steps){
-                if(step instanceof AddMarkStep || step instanceof RemoveMarkStep){
-                    if(step.from>=from && step.to <= to){
-                    tra.step(step)
+                // Put the proper mark steps back again
+                for(let step of offlineTr.steps){
+                    if(step instanceof AddMarkStep || step instanceof RemoveMarkStep){
+                        if(step.from>=from && step.to <= to){
+                            tra.step(step.map(revMapping).map(commonMaps))
+                        }
                     }
                 }
             }
-            console.log(tra)
+
             const newState = view2.state.apply(tra)
             view2.updateState(newState)
             commonMaps.appendMapping(tra.mapping)
@@ -478,19 +478,20 @@ export class ModCollabDoc {
 
             const tra = view2.state.tr
             for(let stepIndex of steps){
-                let stepMaps = onlineTr.mapping.maps.slice(0,stepIndex).map(map=>map.invert())
+                let stepMaps = offlineTr.mapping.maps.slice(0,stepIndex).map(map=>map.invert())
                 let revMapping = new Mapping(stepMaps)
+                console.log(offlineTr.steps[stepIndex],offlineTr.steps[stepIndex].map(revMapping),offlineTr.steps[stepIndex].map(revMapping).map(commonMaps))
                 tra.step(offlineTr.steps[stepIndex].map(revMapping).map(commonMaps))
             }
 
-            // Put the proper mark steps back again
-            for(let step of offlineTr.steps){
-                if(step instanceof AddMarkStep || step instanceof RemoveMarkStep){
-                    if(step.from>=from && step.to <= to){
-                    tra.step(step)
-                    }
-                }
-            }
+            // // Put the proper mark steps back again
+            // for(let step of offlineTr.steps){
+            //     if(step instanceof AddMarkStep || step instanceof RemoveMarkStep){
+            //         if(step.from>=from && step.to <= to){
+            //             tra.step(step.map(revMapping).map(commonMaps))
+            //         }
+            //     }
+            // }
             console.log("TRA",tra)
             const newState = view2.state.apply(tra)
             view2.updateState(newState)
@@ -521,13 +522,13 @@ export class ModCollabDoc {
             }
 
             // Put the proper mark steps back again
-            for(let step of onlineTr.steps){
-                if(step instanceof AddMarkStep || step instanceof RemoveMarkStep){
-                    if(step.from>=from && step.to <= to){
-                    tra.step(step)
-                    }
-                }
-            }
+            // for(let step of onlineTr.steps){
+            //     if(step instanceof AddMarkStep || step instanceof RemoveMarkStep){
+            //         if(step.from>=from && step.to <= to){
+            //         tra.step(step.map(revMapping).map(commonMaps))
+            //         }
+            //     }
+            // }
             const newState = view2.state.apply(tra)
             view2.updateState(newState)
             commonMaps.appendMapping(tra.mapping)
@@ -595,7 +596,7 @@ export class ModCollabDoc {
             this.mod.editor.mod.footnotes.fnEditor.renderAllFootnotes()
             this.mod.editor.docInfo.version = data.doc.v
             
-            // this.openDiffEditors(confirmedState.doc,unconfirmedTr.doc,toDoc,unconfirmedCondensedTr,lostTr,data)
+            this.openDiffEditors(confirmedState.doc,unconfirmedTr.doc,toDoc,unconfirmedCondensedTr,lostTr,data)
 
             // Modify the online transactions to have simple replace steps instead of inserting and deleting at same time
             // const modifiedlostTr = new Transform(this.mod.editor.docInfo.confirmedDoc)
@@ -614,70 +615,6 @@ export class ModCollabDoc {
             // })
             // lostTr = modifiedlostTr
 
-            // Find conflicts
-            console.log(unconfirmedCondensedTr,lostTr)
-            let conflicts = this.findConflicts(unconfirmedCondensedTr,lostTr)
-            let onlineConflictingDeletionIndex = [] , offlineConflictingDeletionIndex = []
-
-            // Store the indexes of conflicting deletion steps
-            console.log("conflicts!!!",conflicts)
-            conflicts.forEach(conflict=>{
-                if(!offlineConflictingDeletionIndex.includes(conflict[0])){
-                    offlineConflictingDeletionIndex.push(conflict[0])
-                }
-                if(!onlineConflictingDeletionIndex.includes(conflict[2])){
-                    onlineConflictingDeletionIndex.push(conflict[2])
-                }
-            })
-
-            // Create a Tr without conflicts Online
-            const OnlineTrWithoutConflicts = confirmedState.tr
-            const onlineConflicts = confirmedState.tr
-            const upMapping = new Mapping()
-            lostTr.steps.forEach((step,index)=>{
-                if(!onlineConflictingDeletionIndex.includes(index)){
-                    if(step.map(upMapping))
-                        OnlineTrWithoutConflicts.step(step.map(upMapping))
-                } else if (onlineConflictingDeletionIndex.includes(index)){
-                    upMapping.appendMap(step.getMap().invert())
-                    onlineConflicts.maybeStep(step)
-                }
-            })
-
-            // Create a Tr without conflicts Offline
-            const OfflineTrWithoutConflicts = confirmedState.tr
-            const OfflineConflicts = confirmedState.tr
-            const ipMapping = new Mapping()
-            unconfirmedCondensedTr.steps.forEach((step,index)=>{
-                if(!offlineConflictingDeletionIndex.includes(index)){
-                    OfflineTrWithoutConflicts.step(step.map(ipMapping))
-                } else if ( offlineConflictingDeletionIndex.includes(index) ){
-                    ipMapping.appendMap(step.getMap().invert())
-                    OfflineConflicts.maybeStep(step)
-                }
-            })
-
-            // Create a doc from the confirmed state
-            const {state: newconfirmedState, transactions} = confirmedState.applyTransaction(OnlineTrWithoutConflicts)
-
-            //Rebase the offline Transaction
-            const rebasedOfflineTr = newconfirmedState.tr
-            const maps = new Mapping([].concat(OfflineTrWithoutConflicts.mapping.maps.slice().map(map=>map.invert())).concat(OnlineTrWithoutConflicts.mapping.maps))
-            OfflineTrWithoutConflicts.steps.forEach((step,index)=>{
-                const mapped = step.map(maps.slice(OfflineTrWithoutConflicts.steps.length - index))
-                if (mapped && !rebasedOfflineTr.maybeStep(mapped).failed) {
-                    maps.appendMap(mapped.getMap())
-                    maps.setMirror(OfflineTrWithoutConflicts.steps.length-index-1,(OfflineTrWithoutConflicts.steps.length+OnlineTrWithoutConflicts.steps.length+rebasedOfflineTr.steps.length-1))
-                }
-            })
-
-            // Apply the offline Transaction
-            const {state: new2confirmedState, transactions2} = newconfirmedState.applyTransaction(rebasedOfflineTr)
-
-            console.log("HET",OnlineTrWithoutConflicts,OfflineTrWithoutConflicts,confirmedState,new2confirmedState,newconfirmedState)
-
-            // Open the 2 editors
-            this.openDiffEditors(new2confirmedState.doc,unconfirmedCondensedTr.doc,toDoc,OfflineConflicts,onlineConflicts,data,conflicts)
             // // 
             // let tracked
             // console.log("Lost online",lostTr)  
