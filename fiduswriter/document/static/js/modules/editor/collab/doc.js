@@ -254,7 +254,7 @@ export class ModCollabDoc {
 
         const OnlineStepsLost = recreateTransform(onlineDoc,this.mod.editor.view.state.doc)
         const newTr = this.mod.editor.view.state.tr
-        const maps = new Mapping([].concat(tr.mapping.maps.slice().map(map=>map.invert())).concat(OnlineStepsLost.mapping.maps))
+        const maps = new Mapping([].concat(tr.mapping.maps.slice().reverse().map(map=>map.invert())).concat(OnlineStepsLost.mapping.maps))
         tr.steps.forEach((step,index)=>{
             const mapped = step.map(maps.slice(tr.steps.length - index))
             if (mapped && !newTr.maybeStep(mapped).failed) {
@@ -264,6 +264,28 @@ export class ModCollabDoc {
         })
         this.mod.editor.view.dispatch(newTr)        
     }
+
+    findMarkSteps(tr,changeset){
+        const markSteps = []
+        tr.steps.forEach(step=>{
+            if(step instanceof AddMarkStep || step instanceof RemoveMarkStep){
+                markSteps.push(step)
+            }
+        })
+        const stepsMean = []
+        changeset.changes.forEach(change=>{
+            if(change.inserted.length>0){
+                markSteps.forEach(markstep=>{
+                    const mappedMarkStep = markstep.map(tr.mapping.slice(tr.steps.indexOf(markstep),tr.steps.length))
+                    if(!(mappedMarkStep.from>=change.fromB &&mappedMarkStep.to<=change.toB)){
+                        stepsMean.push(markstep)
+                    }
+                })
+            }
+        })
+        return stepsMean
+    }
+
 
     openDiffEditors(CpDoc,offlineDoc,onlineDoc,offlineTr,onlineTr,data,conflicts){
         const dia = new Dialog({
@@ -282,7 +304,24 @@ export class ModCollabDoc {
                     DiffRemovalTr.removeMark(0,view2.state.doc.content.size,this.mod.editor.schema.marks.DiffMark)
                     const newState = view2.state.apply(DiffRemovalTr)
                     view2.updateState(newState)
-        
+                    
+                    // Apply all the marks that are not handled by recreate steps!
+                    const markTr = view2.state.tr
+                    console.log(offlineMarkSteps,onlineMarkSteps)
+                    offlineMarkSteps.forEach(markstep=>{
+                        let stepMaps = offlineTr.mapping.maps.slice(0,offlineTr.steps.indexOf(markstep)).map(map=>map.invert())
+                        let revMapping = new Mapping(stepMaps)
+                        markTr.step(markstep.map(revMapping).map(commonMaps)) 
+                    })
+                    onlineMarkSteps.forEach(markstep=>{
+                        let stepMaps = onlineTr.mapping.maps.slice(0,onlineTr.steps.indexOf(markstep)).map(map=>map.invert())
+                        let revMapping = new Mapping(stepMaps)
+                        markTr.step(markstep.map(revMapping).map(commonMaps)) 
+                    })
+                    console.log(markTr)
+                    const newState2 = view2.state.apply(markTr)
+                    view2.updateState(newState2)
+                    
                     this.applyChangesToEditor(recreateTransform(onlineDoc,view2.state.doc),data,onlineDoc)
                     dia.close()
                 }
@@ -339,18 +378,13 @@ export class ModCollabDoc {
             })
         })
 
-        const commonMaps = new Mapping()
-        const conflict_dict = {}
-        for(let conflict in conflicts){
-            if(conflict[0] in Object.keys(conflict_dict)){
-                conflict_dict[conflict].push(conflict[1])
-            } else {
-                conflict_dict[conflict] = [conflict[1]]
-            }
-        }
-
         const changeset = this.changeSet(offlineTr)
+        const changeset2 = this.changeSet(onlineTr)
         console.log(changeset)
+
+        const offlineMarkSteps = this.findMarkSteps(offlineTr,changeset)
+        const onlineMarkSteps = this.findMarkSteps(onlineTr,changeset2)
+
         changeset.changes.forEach(change=>{
         if(change.inserted.length>0){
             const trackedTr = view1.state.tr
@@ -370,8 +404,6 @@ export class ModCollabDoc {
             view2.updateState(newState)
         }
         })
-
-        const changeset2 = this.changeSet(onlineTr)
         console.log(changeset2)
         changeset2.changes.forEach(change=>{
         if(change.inserted.length>0){
@@ -484,15 +516,6 @@ export class ModCollabDoc {
                 tra.step(offlineTr.steps[stepIndex].map(revMapping).map(commonMaps))
             }
 
-            // // Put the proper mark steps back again
-            // for(let step of offlineTr.steps){
-            //     if(step instanceof AddMarkStep || step instanceof RemoveMarkStep){
-            //         if(step.from>=from && step.to <= to){
-            //             tra.step(step.map(revMapping).map(commonMaps))
-            //         }
-            //     }
-            // }
-            console.log("TRA",tra)
             const newState = view2.state.apply(tra)
             view2.updateState(newState)
             commonMaps.appendMapping(tra.mapping)
@@ -520,15 +543,6 @@ export class ModCollabDoc {
                 console.log(onlineTr.steps[stepIndex],onlineTr.steps[stepIndex].map(revMapping),onlineTr.steps[stepIndex].map(revMapping).map(commonMaps))
                 tra.step(onlineTr.steps[stepIndex].map(revMapping).map(commonMaps))
             }
-
-            // Put the proper mark steps back again
-            // for(let step of onlineTr.steps){
-            //     if(step instanceof AddMarkStep || step instanceof RemoveMarkStep){
-            //         if(step.from>=from && step.to <= to){
-            //         tra.step(step.map(revMapping).map(commonMaps))
-            //         }
-            //     }
-            // }
             const newState = view2.state.apply(tra)
             view2.updateState(newState)
             commonMaps.appendMapping(tra.mapping)
