@@ -125,6 +125,7 @@ export class ModCollabDoc {
             ))
 
             // Complete rollback properly
+            rollbackTr.setMeta('remote',true)
             this.mod.editor.view.dispatch(rollbackTr)
 
             // We reset to there being no local changes to send.
@@ -132,7 +133,7 @@ export class ModCollabDoc {
                 this.mod.editor.view.state,
                 rollbackTr.steps,
                 rollbackTr.steps.map(_step => this.mod.editor.client_id)
-            ))
+            ).setMeta('remote',true))
             
             //Update the footnote editor state
             this.mod.editor.mod.footnotes.fnEditor.renderAllFootnotes()
@@ -190,7 +191,7 @@ export class ModCollabDoc {
                 rebasedTrackedTr.setMeta('remote',true)
             } else {
                 tracked = false
-                rebasedTrackedTr = rebasedTr
+                rebasedTrackedTr = rebasedTr.setMeta('remote',true)
             }
 
 
