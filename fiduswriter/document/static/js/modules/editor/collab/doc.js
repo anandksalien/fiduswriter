@@ -286,8 +286,65 @@ export class ModCollabDoc {
         return stepsMean
     }
 
+    markImageDiffs(tr,from,to,difftype,steps_involved){
+        tr.doc.nodesBetween(
+            from,
+            to,
+            (node, pos) => {
+                if (pos < from || ['bullet_list', 'ordered_list'].includes(node.type.name)) {
+                    return true
+                } else if (node.isInline || ['table_row', 'table_cell'].includes(node.type.name)) {
+                    return false
+                }
+                if (node.attrs.diffData && node.type.name == "figure") {
+                    const diffData = []
+                    diffData.push({type : difftype , from:from ,to:to , steps:steps_involved})
+                    const diff = difftype
+                    console.log("Wohooo",Object.assign({}, node.attrs, {diffData,diff}))
+                    tr.setNodeMarkup(pos, null, Object.assign({}, node.attrs, {diffData,diff}), node.marks)
+                }
+                if (node.type.name==='table') {
+                    // A table was inserted. We don't add track marks to elements inside of it.
+                    return false
+                }
+            }
+        )
+    }
+
+    removeFigureMarks(tr,from,to){
+        tr.doc.nodesBetween(
+            from,
+            to,
+            (node, pos) => {
+                if (pos < from || ['bullet_list', 'ordered_list'].includes(node.type.name)) {
+                    return true
+                } else if (node.isInline || ['table_row', 'table_cell'].includes(node.type.name)) {
+                    return false
+                }
+                if (node.attrs.diffData && node.type.name == "figure") {
+                    const diffData = []
+                    const diff = ""
+                    console.log("Wohooo2",Object.assign({}, node.attrs, {diffData,diff}))
+                    tr.setNodeMarkup(pos, null, Object.assign({}, node.attrs, {diffData,diff}), node.marks)
+                }
+                if (node.type.name==='table') {
+                    // A table was inserted. We don't add track marks to elements inside of it.
+                    return false
+                }
+            }
+        )
+
+    }
 
     openDiffEditors(CpDoc,offlineDoc,onlineDoc,offlineTr,onlineTr,data,conflicts){
+        
+        // Directly add the new images to the main editor , to display the images properly in diff editors! The editor DB will be replaced later anyhow!
+        for(let image_id in data.doc.images){
+            if(!Object.keys(this.mod.editor.mod.db.imageDB).includes(image_id)){
+                this.mod.editor.mod.db.imageDB.db[image_id]=data.doc.images[image_id]
+            }
+        }
+
         const dia = new Dialog({
             id: 'editor-merge-view',
             title: gettext("Merging Offline Document"),
@@ -384,14 +441,19 @@ export class ModCollabDoc {
 
         const offlineMarkSteps = this.findMarkSteps(offlineTr,changeset)
         const onlineMarkSteps = this.findMarkSteps(onlineTr,changeset2)
+        const commonMaps = new Mapping()
 
         changeset.changes.forEach(change=>{
         if(change.inserted.length>0){
             const trackedTr = view1.state.tr
-            const steps_involved = []
+            let steps_involved = []
             change.inserted.forEach(insertion=>steps_involved.push(insertion.data.step))
+            const stepsSet = new Set(steps_involved)
+            steps_involved = Array.from(stepsSet)
+            steps_involved.sort()
             const insertionMark = this.mod.editor.schema.marks.DiffMark.create({diff:"offline-inserted",steps:JSON.stringify(steps_involved),from:change.fromB,to:change.toB})
             trackedTr.addMark(change.fromB,change.toB,insertionMark)
+            this.markImageDiffs(trackedTr,change.fromB,change.toB,"offline-inserted",steps_involved)
             const newState = view1.state.apply(trackedTr)
             view1.updateState(newState)
         } if (change.deleted.length>0){
@@ -399,7 +461,8 @@ export class ModCollabDoc {
             const steps_involved = []
             change.deleted.forEach(deletion=>steps_involved.push(deletion.data.step))
             const deletionMark = this.mod.editor.schema.marks.DiffMark.create({diff:"offline-deleted",steps:JSON.stringify(steps_involved),from:change.fromA,to:change.toA})
-            trackedTr.addMark(change.fromA,change.toA,deletionMark)  
+            trackedTr.addMark(change.fromA,change.toA,deletionMark)
+            this.markImageDiffs(trackedTr,change.fromA,change.toA,"offline-deleted",steps_involved)
             const newState = view2.state.apply(trackedTr)
             view2.updateState(newState)
         }
@@ -408,10 +471,14 @@ export class ModCollabDoc {
         changeset2.changes.forEach(change=>{
         if(change.inserted.length>0){
             const trackedTr = view3.state.tr
-            const steps_involved = []
+            let steps_involved = []
             change.inserted.forEach(insertion=>steps_involved.push(insertion.data.step))
+            const stepsSet = new Set(steps_involved)
+            steps_involved = Array.from(stepsSet)
+            steps_involved.sort()
             const insertionMark = this.mod.editor.schema.marks.DiffMark.create({diff:"online-inserted",steps:JSON.stringify(steps_involved),from:change.fromB,to:change.toB})
             trackedTr.addMark(change.fromB,change.toB,insertionMark)
+            this.markImageDiffs(trackedTr,change.fromB,change.toB,"online-inserted",steps_involved)
             const newState = view3.state.apply(trackedTr)
             view3.updateState(newState)
         } if (change.deleted.length>0){
@@ -420,6 +487,7 @@ export class ModCollabDoc {
             change.deleted.forEach(deletion=>steps_involved.push(deletion.data.step))
             const deletionMark = this.mod.editor.schema.marks.DiffMark.create({diff:"online-deleted",steps:JSON.stringify(steps_involved),from:change.fromA,to:change.toA})
             trackedTr.addMark(change.fromA,change.toA,deletionMark)  
+            this.markImageDiffs(trackedTr,change.fromA,change.toA,"online-deleted",steps_involved)
             const newState = view2.state.apply(trackedTr)
             view2.updateState(newState)
         }
@@ -432,25 +500,31 @@ export class ModCollabDoc {
             const from = element.dataset.from
             const to = element.dataset.to
             const steps = JSON.parse(element.dataset.steps)
+            let stepMaps = offlineTr.mapping.maps.slice().reverse().map(map=>map.invert())
+            let rebasedMapping = new Mapping(stepMaps)
+            rebasedMapping.appendMapping(commonMaps)
             for(let stepIndex of steps){
-                let stepMaps = offlineTr.mapping.maps.slice(0,stepIndex).map(map=>map.invert())
-                let revMapping = new Mapping(stepMaps)
-                tra.step(offlineTr.steps[stepIndex].map(revMapping).map(commonMaps))
-                
+                const maps = rebasedMapping.slice(offlineTr.steps.length-stepIndex)
+                const mappedStep = offlineTr.steps[stepIndex].map(maps)
+                if(mappedStep && !tra.maybeStep(mappedStep).failed){
+                    commonMaps.appendMap(mappedStep.getMap())
+                    rebasedMapping.appendMap(mappedStep.getMap())
+                    rebasedMapping.setMirror(offlineTr.steps.length-stepIndex-1,(offlineTr.steps.length+commonMaps.maps.length-1))
+                }
                 // Put the proper mark steps back again
                 for(let step of offlineTr.steps){
                     if(step instanceof AddMarkStep || step instanceof RemoveMarkStep){
                         if(step.from>=from && step.to <= to){
-                            tra.step(step.map(revMapping).map(commonMaps))
+                            if(step.map(rebasedMapping)){
+                                tra.maybeStep(step.map(rebasedMapping))
+                            }
                         }
                     }
                 }
             }
-
             const newState = view2.state.apply(tra)
             view2.updateState(newState)
-            commonMaps.appendMapping(tra.mapping)
-
+            
             // Remove the insertion mark!!
             const trackedTr = view1.state.tr
             trackedTr.removeMark(from,to,this.mod.editor.schema.marks.DiffMark)
@@ -467,16 +541,23 @@ export class ModCollabDoc {
             const from = element.dataset.from
             const to = element.dataset.to
             const steps = JSON.parse(element.dataset.steps)
+            let stepMaps = onlineTr.mapping.maps.slice().reverse().map(map=>map.invert())
+            let rebasedMapping = new Mapping(stepMaps)
+            rebasedMapping.appendMapping(commonMaps)
             for(let stepIndex of steps){
-                let stepMaps = onlineTr.mapping.maps.slice(0,stepIndex).map(map=>map.invert())
-                let revMapping = new Mapping(stepMaps)
-                console.log(revMapping,onlineTr.steps[stepIndex].map(revMapping))
-                tra.step(onlineTr.steps[stepIndex].map(revMapping).map(commonMaps))
+                const mappedStep = onlineTr.steps[stepIndex].map(rebasedMapping.slice(onlineTr.steps.length-stepIndex))
+                if(mappedStep && !tra.maybeStep(mappedStep).failed){
+                    commonMaps.appendMap(mappedStep.getMap())
+                    rebasedMapping.appendMap(mappedStep.getMap())
+                    rebasedMapping.setMirror(onlineTr.steps.length-stepIndex-1,(onlineTr.steps.length+commonMaps.maps.length-1))
+                }
                 // Put the proper mark steps back again
-                for(let step of offlineTr.steps){
+                for(let step of onlineTr.steps){
                     if(step instanceof AddMarkStep || step instanceof RemoveMarkStep){
                         if(step.from>=from && step.to <= to){
-                            tra.step(step.map(revMapping).map(commonMaps))
+                            if(step.map(rebasedMapping)){
+                                tra.maybeStep(step.map(rebasedMapping))
+                            }
                         }
                     }
                 }
@@ -484,7 +565,6 @@ export class ModCollabDoc {
 
             const newState = view2.state.apply(tra)
             view2.updateState(newState)
-            commonMaps.appendMapping(tra.mapping)
 
             // Remove the insertion mark!!
             const trackedTr = view3.state.tr
@@ -509,16 +589,20 @@ export class ModCollabDoc {
             view2.updateState(newState1)
 
             const tra = view2.state.tr
+            let stepMaps = offlineTr.mapping.maps.slice().reverse().map(map=>map.invert())
+            let rebasedMapping = new Mapping(stepMaps)
+            rebasedMapping.appendMapping(commonMaps)
             for(let stepIndex of steps){
-                let stepMaps = offlineTr.mapping.maps.slice(0,stepIndex).map(map=>map.invert())
-                let revMapping = new Mapping(stepMaps)
-                console.log(offlineTr.steps[stepIndex],offlineTr.steps[stepIndex].map(revMapping),offlineTr.steps[stepIndex].map(revMapping).map(commonMaps))
-                tra.step(offlineTr.steps[stepIndex].map(revMapping).map(commonMaps))
+                const mappedStep = offlineTr.steps[stepIndex].map(rebasedMapping.slice(offlineTr.steps.length-stepIndex))
+                if(mappedStep && !tra.maybeStep(mappedStep).failed){
+                    commonMaps.appendMap(mappedStep.getMap())
+                    rebasedMapping.appendMap(mappedStep.getMap())
+                    rebasedMapping.setMirror(offlineTr.steps.length-stepIndex-1,(offlineTr.steps.length+commonMaps.maps.length-1))
+                }
             }
 
             const newState = view2.state.apply(tra)
             view2.updateState(newState)
-            commonMaps.appendMapping(tra.mapping)
         })
         }
 
@@ -536,17 +620,113 @@ export class ModCollabDoc {
             view2.updateState(newState1)
 
             const tra = view2.state.tr
+            let stepMaps = onlineTr.mapping.maps.slice().reverse().map(map=>map.invert())
+            let rebasedMapping = new Mapping(stepMaps)
+            rebasedMapping.appendMapping(commonMaps)
             for(let stepIndex of steps){
-                let stepMaps = onlineTr.mapping.maps.slice(0,stepIndex).map(map=>map.invert())
-                let revMapping = new Mapping(stepMaps)
-                console.log(revMapping,commonMaps)
-                console.log(onlineTr.steps[stepIndex],onlineTr.steps[stepIndex].map(revMapping),onlineTr.steps[stepIndex].map(revMapping).map(commonMaps))
-                tra.step(onlineTr.steps[stepIndex].map(revMapping).map(commonMaps))
+                const mappedStep = onlineTr.steps[stepIndex].map(rebasedMapping.slice(onlineTr.steps.length-stepIndex))
+                if(mappedStep && !tra.maybeStep(mappedStep).failed){
+                    commonMaps.appendMap(mappedStep.getMap())
+                    rebasedMapping.appendMap(mappedStep.getMap())
+                    rebasedMapping.setMirror(onlineTr.steps.length-stepIndex-1,(onlineTr.steps.length+commonMaps.maps.length-1))
+                }
+
             }
             const newState = view2.state.apply(tra)
             view2.updateState(newState)
-            commonMaps.appendMapping(tra.mapping)
         })
+        }
+
+        const offlineinsertedFigureElements = document.querySelectorAll(`figure[data-diff="offline-inserted"]`)
+        for(let figureElement of offlineinsertedFigureElements){
+            figureElement.addEventListener("click",()=>{
+                const tra = view2.state.tr
+                const diffData = JSON.parse(figureElement.dataset.diffData)[0]
+                let stepMaps = offlineTr.mapping.maps.slice().reverse().map(map=>map.invert())
+                let rebasedMapping = new Mapping(stepMaps)
+                rebasedMapping.appendMapping(commonMaps)
+                for(let stepIndex of diffData.steps){
+                    const mappedStep = offlineTr.steps[stepIndex].map(rebasedMapping.slice(offlineTr.steps.length-stepIndex))
+                    if(mappedStep && !tra.maybeStep(mappedStep).failed){
+                        commonMaps.appendMap(mappedStep.getMap())
+                        rebasedMapping.appendMap(mappedStep.getMap())
+                        rebasedMapping.setMirror(offlineTr.steps.length-stepIndex-1,(offlineTr.steps.length+commonMaps.maps.length-1))
+                    }
+                }
+                const newState = view2.state.apply(tra)
+                view2.updateState(newState)
+                
+                // Remove the insertion mark!!
+                const trackedTr = view1.state.tr
+                this.removeFigureMarks(trackedTr,diffData.from,diffData.to)
+                const newState1 = view1.state.apply(trackedTr)
+                view1.updateState(newState1)
+            })
+        }
+
+        const onlineinsertedFigureElements = document.querySelectorAll(`figure[data-diff="online-inserted"]`)
+        for(let figureElement of onlineinsertedFigureElements){
+            figureElement.addEventListener("click",()=>{
+                const tra = view2.state.tr
+                const diffData = JSON.parse(figureElement.dataset.diffData)[0]
+                let stepMaps = onlineTr.mapping.maps.slice().reverse().map(map=>map.invert())
+                let rebasedMapping = new Mapping(stepMaps)
+                rebasedMapping.appendMapping(commonMaps)
+                for(let stepIndex of diffData.steps){
+                    const mappedStep = onlineTr.steps[stepIndex].map(rebasedMapping.slice(onlineTr.steps.length-stepIndex))
+                    if(mappedStep && !tra.maybeStep(mappedStep).failed){
+                        commonMaps.appendMap(mappedStep.getMap())
+                        rebasedMapping.appendMap(mappedStep.getMap())
+                        rebasedMapping.setMirror(onlineTr.steps.length-stepIndex-1,(onlineTr.steps.length+commonMaps.maps.length-1))
+                    }   
+                }
+                const newState = view2.state.apply(tra)
+                view2.updateState(newState)
+                
+                // Remove the insertion mark!!
+                const trackedTr = view3.state.tr
+                this.removeFigureMarks(trackedTr,diffData.from,diffData.to)
+                const newState1 = view3.state.apply(trackedTr)
+                view3.updateState(newState1)
+            })
+        }
+
+        const onlinedeletedFigureElements = document.querySelectorAll(`figure[data-diff="online-deleted"]`)
+        for(let figureElement of onlinedeletedFigureElements){
+            figureElement.addEventListener("click",()=>{
+                const tra = view2.state.tr
+                const diffData = JSON.parse(figureElement.dataset.diffData)[0]
+                for(let stepIndex of diffData.steps){
+                    let stepMaps = onlineTr.mapping.maps.slice(0,stepIndex).map(map=>map.invert())
+                    let rebasedMapping = new Mapping(stepMaps)
+                    rebasedMapping.appendMapping(commonMaps)
+                    const mappedStep = onlineTr.steps[stepIndex].map(rebasedMapping)
+                    if(mappedStep && !tra.maybeStep(mappedStep).failed){
+                        commonMaps.appendMap(mappedStep.getMap())
+                    }
+                }
+                const newState = view2.state.apply(tra)
+                view2.updateState(newState)
+            })
+        }
+
+        const offlinedeletedFigureElements = document.querySelectorAll(`figure[data-diff="offline-deleted"]`)
+        for(let figureElement of offlinedeletedFigureElements){
+            figureElement.addEventListener("click",()=>{
+                const tra = view2.state.tr
+                const diffData = JSON.parse(figureElement.dataset.diffData)[0]
+                for(let stepIndex of diffData.steps){
+                    let stepMaps = offlineTr.mapping.maps.slice(0,stepIndex).map(map=>map.invert())
+                    let rebasedMapping = new Mapping(stepMaps)
+                    rebasedMapping.appendMapping(commonMaps)
+                    const mappedStep = offlineTr.steps[stepIndex].map(rebasedMapping)
+                    if(mappedStep && !tra.maybeStep(mappedStep).failed){
+                        commonMaps.appendMap(mappedStep.getMap())
+                    }
+                }
+                const newState = view2.state.apply(tra)
+                view2.updateState(newState)
+            })
         }
     }
 
@@ -573,16 +753,16 @@ export class ModCollabDoc {
             ))
 
             // Complete rollback properly
+            rollbackTr.setMeta('remote',true)
             this.mod.editor.view.dispatch(rollbackTr)
 
             // We reset to there being no local changes to send.
             this.mod.editor.view.dispatch(receiveTransaction(
                 this.mod.editor.view.state,
                 rollbackTr.steps,
-                rollbackTr.steps.map(_step => this.mod.editor.client_id)
-            ))
+                rollbackTr.steps.map(_step => 'remote')
+            ).setMeta('remote',true))
             
-
             const toDoc = this.mod.editor.schema.nodeFromJSON({type:'doc', content:[
                 data.doc.contents
             ]})

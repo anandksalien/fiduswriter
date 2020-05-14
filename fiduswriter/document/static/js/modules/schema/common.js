@@ -158,7 +158,10 @@ export const figure = {
         id: {default: false},
         track: {default: []},
         aligned: {default: 'center'},
-        width:{default:"100"}
+        width:{default:"100"},
+        diff:{default:""},
+        diffData:{default:[]}
+
     },
     parseDOM: [{
         tag: 'figure',
@@ -173,6 +176,8 @@ export const figure = {
                 track: parseTracks(dom.dataset.track),
                 aligned: dom.dataset.aligned,
                 width: dom.dataset.width,
+                diff:dom.dataset.diff,
+                diffData:JSON.parse(dom.dataset.diffData)
 
             }
         }
@@ -186,6 +191,8 @@ export const figure = {
         dom.id = node.attrs.id
         dom.dataset.aligned = node.attrs.aligned
         dom.dataset.width = node.attrs.width
+        dom.dataset.diff = node.attrs.diff
+        dom.dataset.diffData = JSON.stringify(node.attrs.diffData)
 
         switch (node.attrs.aligned) {
             case 'right':

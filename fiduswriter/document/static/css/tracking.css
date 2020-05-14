@@ -65,3 +65,10 @@ background-color: lightgreen;
 span[data-diff="offline-deleted"],span[data-diff="online-deleted"]{
 background-color:lightcoral;
 }
+
+figure[data-diff="offline-inserted"],figure[data-diff="online-inserted"]{
+    background-color: lightgreen;
+}
+figure[data-diff="offline-deleted"],figure[data-diff="online-deleted"]{
+    background-color: lightcoral;
+}
