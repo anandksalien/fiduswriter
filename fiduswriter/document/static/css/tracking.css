@@ -57,18 +57,3 @@ li [data-track]::before {
 .track.active .track-ctas {
     display: block;
 }
-
-span[data-diff="offline-inserted"],span[data-diff="online-inserted"]{
-background-color: lightgreen;
-}
-
-span[data-diff="offline-deleted"],span[data-diff="online-deleted"]{
-background-color:lightcoral;
-}
-
-figure[data-diff="offline-inserted"],figure[data-diff="online-inserted"]{
-    background-color: lightgreen;
-}
-figure[data-diff="offline-deleted"],figure[data-diff="online-deleted"]{
-    background-color: lightcoral;
-}

@@ -216,7 +216,8 @@ export class Editor {
             'bibliography.css',
             'dot_menu.css',
             'cropper.min.css',
-            'inline_tools.css'
+            'inline_tools.css',
+            'merge.css'
         ])
         new ModDocumentTemplate(this)
         const initPromises = [
