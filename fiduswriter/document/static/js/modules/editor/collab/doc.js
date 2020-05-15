@@ -148,7 +148,7 @@ export class ModCollabDoc {
                 this.mod.editor.view.state,
                 lostTr.steps,
                 lostTr.steps.map(_step => 'remote')
-            )
+            ).setMeta('remote',true)
             this.mod.editor.view.dispatch(lostOnlineTr)
             
             // Set Confirmed DOC
