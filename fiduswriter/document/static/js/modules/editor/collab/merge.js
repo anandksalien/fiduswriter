@@ -25,7 +25,7 @@ import {
 import {
     trackedTransaction
 } from "../track"
-
+import { diffPlugin } from "../state_plugins/merge_diff"
 
 export class Merge{
     constructor(mod){
@@ -37,6 +37,9 @@ export class Merge{
         this.mergeView2 = false
         this.mergeView3 = false
         this.mergedDocMap = false
+        this.offlineTr = false
+        this.onlineTr = false
+        this.diffPlugin = [[diffPlugin,()=>({editor:this.mod.editor})]]
     }
 
     trDoc(tr, index = 0) {
@@ -201,7 +204,6 @@ export class Merge{
                     const diffData = []
                     diffData.push({type : difftype , from:from ,to:to , steps:steps_involved})
                     const diff = difftype
-                    console.log("Wohooo",Object.assign({}, node.attrs, {diffData,diff}))
                     tr.setNodeMarkup(pos, null, Object.assign({}, node.attrs, {diffData,diff}), node.marks)
                 }
                 if (node.type.name==='table') {
@@ -226,7 +228,6 @@ export class Merge{
                 if (node.attrs.diffData && node.type.name == "figure") {
                     const diffData = []
                     const diff = ""
-                    console.log("Wohooo2",Object.assign({}, node.attrs, {diffData,diff}))
                     tr.setNodeMarkup(pos, null, Object.assign({}, node.attrs, {diffData,diff}), node.marks)
                 }
                 if (node.type.name==='table') {
@@ -239,13 +240,20 @@ export class Merge{
     }
 
     createMergeDialog(offlineTr,onlineTr,onlineDoc,data){
-        const mergeButtons = [{ 
+        const mergeButtons = [{
+            text: " Help ",
+            classes: 'fw-orange',
+            click: () => {
+                console.log("HEY HEY!!!")
+            }
+        },{ 
             text: "Merge Complete",
             classes: 'fw-dark',
             click: () => {
                 // Remove all diff related marks
                 const DiffRemovalTr = this.mergeView2.state.tr
                 DiffRemovalTr.removeMark(0,this.mergeView2.state.doc.content.size,this.mod.editor.schema.marks.DiffMark)
+                this.removeFigureMarks(this.mergeView2,0,this.mergeView2.state.doc.content.size)
                 this.mergeView2.dispatch(DiffRemovalTr)
                 
                 // Apply all the marks that are not handled by recreate steps!
@@ -270,7 +278,6 @@ export class Merge{
                         markTr.step(mappedMarkStep)
                     }
                 })
-                console.log(markTr)
                 this.mergeView2.dispatch(markTr)
                 
                 this.applyChangesToEditor(recreateTransform(onlineDoc,this.mergeView2.state.doc),data,onlineDoc)
@@ -287,9 +294,9 @@ export class Merge{
         const dialog = new Dialog({
             id: 'editor-merge-view',
             title: gettext("Merging Offline Document"),
-            body: `<div class= "user-contents" style="display:flex;"><div id="editor-diff-1" style="float:left;padding:15px;"></div><div id="editor-diff" style="padding:15px;"></div><div id="editor-diff-2" style="float:right;padding:15px;"></div></div>`,
-            height:500,
-            width:1400,
+            body: `<div style="display:flex"><div class="offline-heading">OFFLINE DOCUMENT</div><div class="merged-heading">MERGED DOCUMENT</div> <div class="online-heading">ONLINE DOCUMENT</div></div><div class= "user-contents" style="display:flex;"><div id="editor-diff-1" style="float:left;padding:15px;"></div><div id="editor-diff" class="merged-view" style="padding:15px;"></div><div id="editor-diff-2" style="float:right;padding:15px;"></div></div>`,
+            height:600,
+            width:1600,
             buttons:mergeButtons
         })
         return dialog
@@ -297,13 +304,20 @@ export class Merge{
 
     bindEditorView(elementId,doc){
         // Bind the plugins to the respective views
-        const plugins = this.mod.editor.statePlugins.map(plugin => {
+        const orignal_plugins = this.mod.editor.statePlugins
+        const plugins = orignal_plugins.map(plugin => {
             if (plugin[1]) {
                 return plugin[0](plugin[1](doc))
             } else {
                 return plugin[0]()
             }
-        })
+        }).concat(this.diffPlugin.map(plugin=>{
+            if (plugin[1]) {
+                return plugin[0](plugin[1](doc))
+            } else {
+                return plugin[0]()
+            }
+        }))
 
         const editorView = new EditorView(document.getElementById(elementId), {
             state: EditorState.create({
@@ -358,70 +372,6 @@ export class Merge{
         view.dispatch(trackedTr)
     }
 
-    bindEventListener(elements,mergeView,originalView,tr){
-        for(let element of elements){
-            element.addEventListener("click",()=>{
-                addAlert('info', `${gettext('Printing has been initiated.')}`)
-                const insertionTr = mergeView.state.tr
-                const from = element.dataset.from
-                const to = element.dataset.to
-                const steps = JSON.parse(element.dataset.steps)
-                let stepMaps = tr.mapping.maps.slice().reverse().map(map=>map.invert())
-                let rebasedMapping = new Mapping(stepMaps)
-                rebasedMapping.appendMapping(this.mergedDocMap)
-                for(let stepIndex of steps){
-                    const maps = rebasedMapping.slice(tr.steps.length-stepIndex)
-                    const mappedStep = tr.steps[stepIndex].map(maps)
-                    if(mappedStep && !insertionTr.maybeStep(mappedStep).failed){
-                        this.mergedDocMap.appendMap(mappedStep.getMap())
-                        rebasedMapping.appendMap(mappedStep.getMap())
-                        rebasedMapping.setMirror(tr.steps.length-stepIndex-1,(tr.steps.length+this.mergedDocMap.maps.length-1))
-                    }
-                    // Put the proper mark steps back again
-                    for(let step of tr.steps){
-                        if(step instanceof AddMarkStep || step instanceof RemoveMarkStep){
-                            if(step.from>=from && step.to <= to){
-                                if(step.map(rebasedMapping)){
-                                    insertionTr.maybeStep(step.map(rebasedMapping))
-                                }
-                            }
-                        }
-                    }
-                }
-                mergeView.dispatch(insertionTr)
-                
-                // Remove the insertion mark!!
-                this.removeMarks(originalView,from,to,this.mod.editor.schema.marks.DiffMark)
-            })
-        }
-    }
-
-    bindFigureEventListeners(figureElements,mergeView,originalView,tr){
-        for(let figureElement of figureElements){
-            figureElement.addEventListener("click",()=>{
-                const tra = mergeView.state.tr
-                const diffData = JSON.parse(figureElement.dataset.diffData)[0]
-                let stepMaps = tr.mapping.maps.slice().reverse().map(map=>map.invert())
-                let rebasedMapping = new Mapping(stepMaps)
-                rebasedMapping.appendMapping(this.mergedDocMap)
-                for(let stepIndex of diffData.steps){
-                    const mappedStep = tr.steps[stepIndex].map(rebasedMapping.slice(tr.steps.length-stepIndex))
-                    if(mappedStep && !tra.maybeStep(mappedStep).failed){
-                        this.mergedDocMap.appendMap(mappedStep.getMap())
-                        rebasedMapping.appendMap(mappedStep.getMap())
-                        rebasedMapping.setMirror(tr.steps.length-stepIndex-1,(tr.steps.length+this.mergedDocMap.maps.length-1))
-                    }
-                }
-                mergeView.dispatch(tra)
-                
-                // Remove the insertion mark!!
-                this.removeFigureMarks(originalView,diffData.from,diffData.to)
-            })
-        }
-
-
-    }
-
     openDiffEditors(cpDoc,offlineDoc,onlineDoc,offlineTr,onlineTr,data,conflicts){
         // Directly add the new images to the main editor , to display the images properly in diff editors! The editor DB will be replaced later anyhow!
         for(let image_id in data.doc.images){
@@ -432,6 +382,8 @@ export class Merge{
 
         this.mergeDialog  = this.createMergeDialog(offlineTr,onlineTr,onlineDoc,data)
         this.mergeDialog.open()
+        this.offlineTr = offlineTr
+        this.onlineTr = onlineTr
 
         console.log("ONLINE",onlineTr)
         console.log("OFFLINE",offlineTr)
@@ -452,30 +404,6 @@ export class Merge{
         this.onlineMarkSteps = this.findMarkSteps(onlineTr,onlineChangeset)
         
         this.mergedDocMap = new Mapping()
-
-        const offlineInsertedElements = document.querySelectorAll("span.offline-inserted")
-        this.bindEventListener(offlineInsertedElements,this.mergeView2,this.mergeView1,offlineTr)
-        
-        const onlineInsertedElements = document.querySelectorAll("span.online-inserted")
-        this.bindEventListener(onlineInsertedElements,this.mergeView2,this.mergeView3,onlineTr)
-
-        const offlineDeletedElements = document.querySelectorAll("span.offline-deleted")
-        this.bindEventListener(offlineDeletedElements,this.mergeView2,this.mergeView2,offlineTr)
-        
-        const onlineDeletedElements = document.querySelectorAll("span.online-deleted")
-        this.bindEventListener(onlineDeletedElements,this.mergeView2,this.mergeView2,onlineTr)
-
-        const offlineinsertedFigureElements = document.querySelectorAll(`figure[data-diff="offline-inserted"]`)
-        this.bindFigureEventListeners(offlineinsertedFigureElements,this.mergeView2,this.mergeView1,offlineTr)
-        
-        const onlineinsertedFigureElements = document.querySelectorAll(`figure[data-diff="online-inserted"]`)
-        this.bindFigureEventListeners(onlineinsertedFigureElements,this.mergeView2,this.mergeView3,onlineTr)
-
-        const onlinedeletedFigureElements = document.querySelectorAll(`figure[data-diff="online-deleted"]`)
-        this.bindFigureEventListeners(onlinedeletedFigureElements,this.mergeView2,this.mergeView2,onlineTr)
-
-        const offlinedeletedFigureElements = document.querySelectorAll(`figure[data-diff="offline-deleted"]`)
-        this.bindFigureEventListeners(offlinedeletedFigureElements,this.mergeView2,this.mergeView2,offlineTr)
     }
 
     autoMerge(unconfirmedTr,lostTr,data){

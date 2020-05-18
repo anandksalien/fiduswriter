@@ -13,3 +13,14 @@ figure[data-diff="offline-inserted"],figure[data-diff="online-inserted"]{
 figure[data-diff="offline-deleted"],figure[data-diff="online-deleted"]{
     background-color: lightcoral;
 }
+
+.offline-heading,.merged-heading,.online-heading {
+    width: 33%;
+    padding:15px;
+    text-align: center;
+    font-weight: bold;
+}
+
+.merged-view{
+    border:2px solid black
+}

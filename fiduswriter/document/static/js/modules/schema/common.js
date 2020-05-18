@@ -140,6 +140,21 @@ export function parseTracks(str) {
     )
 }
 
+export function parseDiff(str) {
+    if (!str) {
+        return []
+    }
+    let tracks
+    try {
+        tracks = JSON.parse(str)
+    } catch (error) {
+        return []
+    }
+    if (!Array.isArray(tracks)) {
+        return []
+    }
+}
+
 function addTracks(node, attrs) {
     if (node.attrs.track && node.attrs.track.length) {
         attrs['data-track'] = JSON.stringify(node.attrs.track)
@@ -177,8 +192,7 @@ export const figure = {
                 aligned: dom.dataset.aligned,
                 width: dom.dataset.width,
                 diff:dom.dataset.diff,
-                diffData:JSON.parse(dom.dataset.diffData)
-
+                diffData:parseDiff(dom.dataset.diffData)
             }
         }
     }],
@@ -191,8 +205,6 @@ export const figure = {
         dom.id = node.attrs.id
         dom.dataset.aligned = node.attrs.aligned
         dom.dataset.width = node.attrs.width
-        dom.dataset.diff = node.attrs.diff
-        dom.dataset.diffData = JSON.stringify(node.attrs.diffData)
 
         switch (node.attrs.aligned) {
             case 'right':
@@ -224,6 +236,10 @@ export const figure = {
 
         if (node.attrs.track && node.attrs.track.length) {
             dom.dataset.track = JSON.stringify(node.attrs.track)
+        }
+        if(node.attrs.diff && node.attrs.diffData.length){
+            dom.dataset.diff = node.attrs.diff
+            dom.dataset.diffData = JSON.stringify(node.attrs.diffData)    
         }
         if (node.attrs.image !== false) {
             dom.appendChild(document.createElement("div"))
@@ -757,8 +773,8 @@ export const DiffMark = {
             tag: "span",
             getAttrs(dom) {
                 return {
-                diff:node.attrs.diff,
-                steps:node.attrs.steps,
+                diff:dom.dataset.diff,
+                steps:dom.dataset.steps,
                 }
             }
         }

@@ -160,12 +160,14 @@ export class ModCollabDoc {
             // Set the version
             this.mod.editor.docInfo.version = data.doc.v
             
+            this.merge.openDiffEditors(confirmedState.doc,unconfirmedTr.doc,toDoc,unconfirmedTr,lostTr,data)
+            
             // If no conflicts arises auto-merge the document
-            if(conflicts.length>0){
-                this.merge.openDiffEditors(confirmedState.doc,unconfirmedTr.doc,toDoc,unconfirmedTr,lostTr,data)
-            } else {
-                this.merge.autoMerge(unconfirmedTr,lostTr,data)
-            }    
+            // if(conflicts.length>0){
+            //     this.merge.openDiffEditors(confirmedState.doc,unconfirmedTr.doc,toDoc,unconfirmedTr,lostTr,data)
+            // } else {
+            //     this.merge.autoMerge(unconfirmedTr,lostTr,data)
+            // }    
         } else {
             // The server seems to have lost some data. We reset.
             this.loadDocument(data)
