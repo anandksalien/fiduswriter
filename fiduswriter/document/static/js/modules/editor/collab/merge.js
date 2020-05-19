@@ -111,7 +111,7 @@ export class Merge{
         return changes
     }
 
-    applyChangesToEditor(tr,data,onlineDoc){
+    updateDB(doc,data){
         const usedImages = [],
             usedBibs = []
         const footnoteFind = (node, usedImages, usedBibs) => {
@@ -125,7 +125,7 @@ export class Merge{
         }
 
         // Looking at rebased doc so that it contains the merged document !!!
-        tr.doc.descendants(node => {
+        doc.descendants(node => {
             if (node.type.name==='citation') {
                 node.attrs.references.forEach(ref => usedBibs.push(parseInt(ref.id)))
             } else if (node.type.name==='figure' && node.attrs.image) {
@@ -156,17 +156,25 @@ export class Merge{
             }
         })
 
+    }
+
+    applyChangesToEditor(tr,onlineDoc){
         const OnlineStepsLost = recreateTransform(onlineDoc,this.mod.editor.view.state.doc)
-        const newTr = this.mod.editor.view.state.tr
-        const maps = new Mapping([].concat(tr.mapping.maps.slice().reverse().map(map=>map.invert())).concat(OnlineStepsLost.mapping.maps))
-        tr.steps.forEach((step,index)=>{
-            const mapped = step.map(maps.slice(tr.steps.length - index))
-            if (mapped && !newTr.maybeStep(mapped).failed) {
-                maps.appendMap(mapped.getMap())
-                maps.setMirror(tr.steps.length-index-1,(tr.steps.length+OnlineStepsLost.steps.length+newTr.steps.length-1))
-            }
-        })
-        this.mod.editor.view.dispatch(newTr)        
+        const conflicts = this.findConflicts(tr,OnlineStepsLost)
+        if(conflicts.length>0){
+            this.openDiffEditors(onlineDoc,tr.doc,OnlineStepsLost.doc,tr,OnlineStepsLost)
+        } else {
+            const newTr = this.mod.editor.view.state.tr
+            const maps = new Mapping([].concat(tr.mapping.maps.slice().reverse().map(map=>map.invert())).concat(OnlineStepsLost.mapping.maps))
+            tr.steps.forEach((step,index)=>{
+                const mapped = step.map(maps.slice(tr.steps.length - index))
+                if (mapped && !newTr.maybeStep(mapped).failed) {
+                    maps.appendMap(mapped.getMap())
+                    maps.setMirror(tr.steps.length-index-1,(tr.steps.length+OnlineStepsLost.steps.length+newTr.steps.length-1))
+                }
+            })
+            this.mod.editor.view.dispatch(newTr)
+        }        
     }
 
     findMarkSteps(tr,changeset){
@@ -237,7 +245,7 @@ export class Merge{
         view.dispatch(tr)
     }
 
-    createMergeDialog(offlineTr,onlineTr,onlineDoc,data){
+    createMergeDialog(offlineTr,onlineTr,onlineDoc){
         const mergeButtons = [{
             text: " Help ",
             classes: 'fw-orange',
@@ -263,7 +271,7 @@ export class Merge{
                     const offlineRebaseMap = offlineRebaseMapping.slice(offlineTr.steps.indexOf(markstep))
                     const mappedMarkStep = markstep.map(offlineRebaseMap)
                     if(mappedMarkStep){
-                        markTr.step(mappedMarkStep)
+                        markTr.maybeStep(mappedMarkStep)
                     } 
                 })
                 const onlineRebaseMapping = new Mapping()
@@ -273,20 +281,24 @@ export class Merge{
                     const onlineRebaseMap = onlineRebaseMapping.slice(onlineTr.steps.indexOf(markstep))
                     const mappedMarkStep = markstep.map(onlineRebaseMap)
                     if(mappedMarkStep){
-                        markTr.step(mappedMarkStep)
+                        markTr.maybeStep(mappedMarkStep)
                     }
                 })
                 this.mergeView2.dispatch(markTr)
-                
-                this.applyChangesToEditor(recreateTransform(onlineDoc,this.mergeView2.state.doc),data,onlineDoc)
                 this.mergeDialog.close()
-
+                const mergedDoc = this.mergeView2.state.doc
                 //CleanUp
+                this.mergeView1.destroy()
+                this.mergeView2.destroy()
+                this.mergeView3.destroy()
                 this.mergeView1 = false
                 this.mergeView2 = false
                 this.mergeView3 = false
                 this.mergedDocMap = false
                 this.mergeDialog = false
+                this.offlineMarkSteps = false
+                this.onlineMarkSteps = false
+                this.applyChangesToEditor(recreateTransform(onlineDoc,mergedDoc),onlineDoc)
             }
         }]
         const dialog = new Dialog({
@@ -298,6 +310,43 @@ export class Merge{
             buttons:mergeButtons
         })
         return dialog
+    }
+
+
+    updateMarkData(tr){
+        // Update the range inside the marks !!
+        const initialdiffMap = tr.getMeta('initialDiffMap')
+        if(!initialdiffMap && (tr.steps.length>0 || tr.docChanged)){
+            tr.doc.nodesBetween(
+                0,
+                tr.doc.content.size,
+                (node, pos) => {
+                    if (['bullet_list', 'ordered_list'].includes(node.type.name)) {
+                        return true
+                    } else if (['table_row', 'table_cell'].includes(node.type.name)) {
+                        return false
+                    } else if (node.isInline){
+                        let diffMark = node.marks.find(mark=>mark.type.name=="DiffMark")
+                        if(diffMark!== undefined){
+                            diffMark = JSON.parse(JSON.stringify(diffMark.attrs))
+                            tr.removeMark(pos,pos+node.nodeSize,this.mod.editor.schema.marks.DiffMark)
+                            const mark = this.mod.editor.schema.marks.DiffMark.create({diff:diffMark.diff,steps:diffMark.steps,from:tr.mapping.map(diffMark.from),to:tr.mapping.map(diffMark.to)})
+                            tr.addMark(pos,pos+node.nodeSize,mark)
+                        }
+                    }
+                    if (node.attrs.diffdata && node.attrs.diffdata.length>0) {
+                        const diffdata = node.attrs.diffdata
+                        diffdata[0].from = tr.mapping.map(diffdata[0].from)
+                        diffdata[0].to = tr.mapping.map(diffdata[0].to)
+                        tr.setNodeMarkup(pos, null, Object.assign({}, node.attrs, {diffdata}), node.marks)
+                    }
+                    if (node.type.name==='table') {
+                        return false
+                    }
+                }
+            )
+        }
+        return tr
     }
 
     bindEditorView(elementId,doc){
@@ -324,7 +373,8 @@ export class Merge{
                 plugins:plugins,
             }),
             dispatchTransaction: tr => {
-                const newState = editorView.state.apply(tr)
+                const mapTr = this.updateMarkData(tr)
+                const newState = editorView.state.apply(mapTr)
                 editorView.updateState(newState)
             }
         })
@@ -363,6 +413,8 @@ export class Merge{
         })
 
         // Dispatch the transactions
+        insertionMarksTr.setMeta('initialDiffMap',true)
+        deletionMarksTr.setMeta('initialDiffMap',true)
         insertionView.dispatch(insertionMarksTr)
         deletionView.dispatch(deletionMarksTr)
     }
@@ -373,15 +425,8 @@ export class Merge{
         view.dispatch(trackedTr)
     }
 
-    openDiffEditors(cpDoc,offlineDoc,onlineDoc,offlineTr,onlineTr,data,conflicts){
-        // Directly add the new images to the main editor , to display the images properly in diff editors! The editor DB will be replaced later anyhow!
-        for(let image_id in data.doc.images){
-            if(!Object.keys(this.mod.editor.mod.db.imageDB).includes(image_id)){
-                this.mod.editor.mod.db.imageDB.db[image_id]=data.doc.images[image_id]
-            }
-        }
-
-        this.mergeDialog  = this.createMergeDialog(offlineTr,onlineTr,onlineDoc,data)
+    openDiffEditors(cpDoc,offlineDoc,onlineDoc,offlineTr,onlineTr){
+        this.mergeDialog  = this.createMergeDialog(offlineTr,onlineTr,onlineDoc)
         this.mergeDialog.open()
         this.offlineTr = offlineTr
         this.onlineTr = onlineTr
@@ -405,6 +450,12 @@ export class Merge{
         this.onlineMarkSteps = this.findMarkSteps(onlineTr,onlineChangeset)
         
         this.mergedDocMap = new Mapping()
+    }
+
+    diffMerge(cpDoc,offlineDoc,onlineDoc,offlineTr,onlineTr,data){
+        // Update the Bib and image DB before hand with the data from the offline document and the socket data.
+        this.updateDB(offlineDoc,data) // Updating the editor DB is one-time operation.
+        this.openDiffEditors(cpDoc,offlineDoc,onlineDoc,offlineTr,onlineTr)
     }
 
     autoMerge(unconfirmedTr,lostTr,data){

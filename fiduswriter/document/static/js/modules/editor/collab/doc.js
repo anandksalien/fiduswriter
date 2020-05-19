@@ -160,7 +160,7 @@ export class ModCollabDoc {
             // Set the version
             this.mod.editor.docInfo.version = data.doc.v
             
-            this.merge.openDiffEditors(confirmedState.doc,unconfirmedTr.doc,toDoc,unconfirmedTr,lostTr,data)
+            this.merge.diffMerge(confirmedState.doc,unconfirmedTr.doc,toDoc,unconfirmedTr,lostTr,data)
             
             // If no conflicts arises auto-merge the document
             // if(conflicts.length>0){

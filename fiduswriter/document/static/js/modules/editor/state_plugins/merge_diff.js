@@ -93,7 +93,6 @@ export const diffPlugin = function(options) {
 
     function removeMarks(view,from,to,mark){
         const trackedTr = view.state.tr
-        trackedTr.removeMark(from,to,mark)
         trackedTr.doc.nodesBetween(
             from,
             to,
@@ -103,7 +102,7 @@ export const diffPlugin = function(options) {
                 } else if (node.isInline || ['table_row', 'table_cell'].includes(node.type.name)) {
                     return false
                 }
-                if (node.attrs.diffdata) {
+                if (node.attrs.diffdata && node.attrs.diffdata.length>0) {
                     const diffdata = []
                     trackedTr.setNodeMarkup(pos, null, Object.assign({}, node.attrs, {diffdata}), node.marks)
                 }
@@ -113,6 +112,8 @@ export const diffPlugin = function(options) {
                 }
             }
         )
+        trackedTr.removeMark(from,to,mark)
+        trackedTr.setMeta('initialDiffMap',true)
         view.dispatch(trackedTr)
     }
 
@@ -198,20 +199,19 @@ export const diffPlugin = function(options) {
         tr = diffMark.attrs.diff.search('offline') != -1 ? editor.mod.collab.doc.merge.offlineTr : editor.mod.collab.doc.merge.onlineTr
         let view
         if(diffMark.attrs.diff.search('offline') != -1){
-            if(diffMark.attrs.diff.search('inserted')){
+            if(diffMark.attrs.diff.search('inserted') != -1){
                 view = editor.mod.collab.doc.merge.mergeView1
             } else {
                 view = editor.mod.collab.doc.merge.mergeView2
             }
         } else {
-            if(diffMark.attrs.diff.search('inserted')){
+            if(diffMark.attrs.diff.search('inserted') != -1){
                 view = editor.mod.collab.doc.merge.mergeView3
             } else {
                 view = editor.mod.collab.doc.merge.mergeView2
             }
         }
         
-
         dropUp.classList.add('drop-up-outer')
         dropUp.innerHTML = noSpaceTmp`
             <div class="link drop-up-inner" style="top: -${requiredPx}px;">
