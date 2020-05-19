@@ -1,3 +1,4 @@
+/* Styles for showing diff changes */
 span[data-diff="offline-inserted"],span[data-diff="online-inserted"]{
     background-color: lightgreen;
 }
@@ -5,22 +6,33 @@ span[data-diff="offline-inserted"],span[data-diff="online-inserted"]{
 span[data-diff="offline-deleted"],span[data-diff="online-deleted"]{
     background-color:lightcoral;
 }
-
-figure[data-diff="offline-inserted"],figure[data-diff="online-inserted"]{
-    background-color: lightgreen;
+.selected-dec{
+    background:yellow !important;
+}
+.offline-inserted , .online-inserted{
+    background:#e1f5e1;
+}
+.offline-deleted , .online-deleted{
+    background:#efc8c8;
+}
+hr.online-inserted,hr.offline-inserted{
+    border:3px solid lightgreen;
+}
+hr.offline-deleted,hr.offline-deleted{
+    border:3px solid lightcoral;
+}
+hr.selected-dec{
+    background:yellow!important;
+    border:3px solid yellow;
 }
 
-figure[data-diff="offline-deleted"],figure[data-diff="online-deleted"]{
-    background-color: lightcoral;
-}
-
+/* Styles for the dialog box */
 .offline-heading,.merged-heading,.online-heading {
     width: 33%;
     padding:15px;
     text-align: center;
     font-weight: bold;
 }
-
 .merged-view{
     border:2px solid black
 }

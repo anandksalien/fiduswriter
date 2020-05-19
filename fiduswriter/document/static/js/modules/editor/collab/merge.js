@@ -200,11 +200,10 @@ export class Merge{
                 } else if (node.isInline || ['table_row', 'table_cell'].includes(node.type.name)) {
                     return false
                 }
-                if (node.attrs.diffData && node.type.name == "figure") {
-                    const diffData = []
-                    diffData.push({type : difftype , from:from ,to:to , steps:steps_involved})
-                    const diff = difftype
-                    tr.setNodeMarkup(pos, null, Object.assign({}, node.attrs, {diffData,diff}), node.marks)
+                if (node.attrs.diffdata) {
+                    const diffdata = []
+                    diffdata.push({type : difftype , from:from ,to:to , steps:steps_involved})
+                    tr.setNodeMarkup(pos, null, Object.assign({}, node.attrs, {diffdata}), node.marks)
                 }
                 if (node.type.name==='table') {
                     // A table was inserted. We don't add track marks to elements inside of it.
@@ -225,10 +224,9 @@ export class Merge{
                 } else if (node.isInline || ['table_row', 'table_cell'].includes(node.type.name)) {
                     return false
                 }
-                if (node.attrs.diffData && node.type.name == "figure") {
-                    const diffData = []
-                    const diff = ""
-                    tr.setNodeMarkup(pos, null, Object.assign({}, node.attrs, {diffData,diff}), node.marks)
+                if (node.attrs.diffdata) {
+                    const diffdata = []
+                    tr.setNodeMarkup(pos, null, Object.assign({}, node.attrs, {diffdata}), node.marks)
                 }
                 if (node.type.name==='table') {
                     // A table was inserted. We don't add track marks to elements inside of it.
@@ -345,16 +343,19 @@ export class Merge{
         changeset.changes.forEach(change=>{
             if(change.inserted.length>0){
                 let steps_involved = []
-                change.inserted.forEach(insertion=>steps_involved.push(insertion.data.step))
+                change.inserted.forEach(insertion=>steps_involved.push(parseInt(insertion.data.step)))
                 const stepsSet = new Set(steps_involved)
                 steps_involved = Array.from(stepsSet)
-                steps_involved.sort()
+                steps_involved.sort((a,b)=>a-b)
                 const insertionMark = this.mod.editor.schema.marks.DiffMark.create({diff:insertionClass,steps:JSON.stringify(steps_involved),from:change.fromB,to:change.toB})
                 insertionMarksTr.addMark(change.fromB,change.toB,insertionMark)
                 this.markImageDiffs(insertionMarksTr,change.fromB,change.toB,insertionClass,steps_involved)
             } if (change.deleted.length>0){
-                const steps_involved = []
-                change.deleted.forEach(deletion=>steps_involved.push(deletion.data.step))
+                let steps_involved = []
+                change.deleted.forEach(deletion=>steps_involved.push(parseInt(deletion.data.step)))
+                const stepsSet = new Set(steps_involved)
+                steps_involved = Array.from(stepsSet)
+                steps_involved.sort((a,b)=>a-b)
                 const deletionMark = this.mod.editor.schema.marks.DiffMark.create({diff:deletionClass,steps:JSON.stringify(steps_involved),from:change.fromA,to:change.toA})
                 deletionMarksTr.addMark(change.fromA,change.toA,deletionMark)
                 this.markImageDiffs(deletionMarksTr,change.fromA,change.toA,deletionClass,steps_involved)

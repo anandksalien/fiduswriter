@@ -1,4 +1,4 @@
-import {Plugin, PluginKey , TextSelection} from "prosemirror-state"
+import {Plugin, PluginKey , TextSelection, NodeSelection} from "prosemirror-state"
 import {Decoration, DecorationSet , __serializeForClipboard} from "prosemirror-view"
 import {noSpaceTmp, addAlert} from "../../common"
 import {
@@ -18,13 +18,41 @@ export const diffPlugin = function(options) {
         if(markFound === undefined){
             markFound = {}
             const node = state.selection.$head.nodeBefore
-            if(node && node.type.name == "figure" && node.attrs.diff && node.attrs.diffData){
-                markFound['image'] = true
-                markFound['diff'] = node.attrs.diff
-                markFound['diffData'] = node.attrs.diffData
+            if(node  && node.attrs.diffdata && node.attrs.diffdata.length>0){
+                markFound['diff'] = node.attrs.diffdata[0].type
+                markFound['attrs'] = {}
+                markFound['attrs']['diff'] = node.attrs.diffdata[0].type
+                markFound['attrs']['from'] = node.attrs.diffdata[0].from
+                markFound['attrs']['to'] = node.attrs.diffdata[0].to
+                markFound['attrs']['steps'] = node.attrs.diffdata[0].steps
             }
         }
         return markFound
+    }
+
+    function createHiglightDecoration(from,to,state){
+        const inlineDeco = Decoration.inline(from,to,{class:'selected-dec'})
+        const deco = []
+        deco.push(inlineDeco)
+        state.doc.nodesBetween(
+            from,
+            to,
+            (node, pos) => {
+                if (pos < from || ['bullet_list', 'ordered_list'].includes(node.type.name)) {
+                    return true
+                } else if (node.isInline || ['table_row', 'table_cell'].includes(node.type.name)) {
+                    return false
+                }
+                if (node && node.attrs.diffdata && node.attrs.diffdata.length>0) {
+                    deco.push(Decoration.node(pos,pos+node.nodeSize,{class:'selected-dec'},{}))
+                }
+                if (node.type.name==='table') {
+                    // A table was inserted. We don't add track marks to elements inside of it.
+                    return false
+                }
+            }
+        )
+        return deco
     }
 
     function getDecos(state) {
@@ -37,35 +65,36 @@ export const diffPlugin = function(options) {
             currentMarks.push(diffMark)
         }
         if (!currentMarks.length) {
-            const node = state.selection.$head.nodeBefore
+            const node = state.selection instanceof NodeSelection ? state.selection.node : state.selection.$head.parent
             let markFound = {}
-            if(node && node.type.name == "figure" && node.attrs.diff && node.attrs.diff!="" && node.attrs.diffData){
+            if(node && node.attrs.diffdata && node.attrs.diffdata.length>0){
                 markFound['image'] = true
                 markFound['attrs'] = {}
-                markFound['attrs']['diff'] = node.attrs.diff
-                markFound['attrs']['diffData'] = node.attrs.diffData
+                markFound['attrs']['diff'] = node.attrs.diffdata[0].type
+                markFound['attrs']['from'] = node.attrs.diffdata[0].from
+                markFound['attrs']['to'] = node.attrs.diffdata[0].to
+                markFound['attrs']['steps'] = JSON.stringify(node.attrs.diffdata[0].steps)
                 let startPos = $head.pos// position of block start.
                 const dom = createDropUp(markFound),
                 deco = Decoration.widget(startPos,dom)
-                return DecorationSet.create(state.doc, [deco])
+                let highlightDecos = createHiglightDecoration(markFound['attrs']["from"],markFound['attrs']["to"],state)
+                highlightDecos.push(deco)
+                return DecorationSet.create(state.doc,highlightDecos)
             }
             return DecorationSet.empty
         }
         const startPos = diffMark.attrs.to
         const dom = createDropUp(diffMark),
             deco = Decoration.widget(startPos,dom)
-        return DecorationSet.create(state.doc, [deco])
+        let highlightDecos = createHiglightDecoration(diffMark.attrs.from,diffMark.attrs.to,state)
+        highlightDecos.push(deco)
+        return DecorationSet.create(state.doc,highlightDecos)
     }
 
     function removeMarks(view,from,to,mark){
         const trackedTr = view.state.tr
         trackedTr.removeMark(from,to,mark)
-        view.dispatch(trackedTr)
-    }
-
-    function removeFigureMarks(view,from,to){
-        const tr = view.state.tr
-        tr.doc.nodesBetween(
+        trackedTr.doc.nodesBetween(
             from,
             to,
             (node, pos) => {
@@ -74,11 +103,9 @@ export const diffPlugin = function(options) {
                 } else if (node.isInline || ['table_row', 'table_cell'].includes(node.type.name)) {
                     return false
                 }
-                if (node.attrs.diffData && node.type.name == "figure") {
-                    const diffData = []
-                    const diff = ""
-                    console.log("Wohooo2",Object.assign({}, node.attrs, {diffData,diff}))
-                    tr.setNodeMarkup(pos, null, Object.assign({}, node.attrs, {diffData,diff}), node.marks)
+                if (node.attrs.diffdata) {
+                    const diffdata = []
+                    trackedTr.setNodeMarkup(pos, null, Object.assign({}, node.attrs, {diffdata}), node.marks)
                 }
                 if (node.type.name==='table') {
                     // A table was inserted. We don't add track marks to elements inside of it.
@@ -86,7 +113,7 @@ export const diffPlugin = function(options) {
                 }
             }
         )
-        view.dispatch(tr)
+        view.dispatch(trackedTr)
     }
 
     function acceptChanges(mark,editor,mergeView,originalView,tr){
@@ -127,33 +154,6 @@ export const diffPlugin = function(options) {
                 removeMarks(originalView,from,to,editor.schema.marks.DiffMark)
             }
         } catch(exc){
-            addAlert('warning',gettext("The change could not be applied automatically.Please consider using the copy option to copy the changes."))
-        }
-    }
-
-    function acceptImageChange(imageData,editor,mergeView,originalView,tr){
-        try {
-            const tra = mergeView.state.tr
-            const diffData = (imageData.attrs.diffData)[0]
-            let stepMaps = tr.mapping.maps.slice().reverse().map(map=>map.invert())
-            let rebasedMapping = new Mapping(stepMaps)
-            rebasedMapping.appendMapping(editor.mod.collab.doc.merge.mergedDocMap)
-            for(let stepIndex of diffData.steps){
-                const mappedStep = tr.steps[stepIndex].map(rebasedMapping.slice(tr.steps.length-stepIndex))
-                if(mappedStep && !tra.maybeStep(mappedStep).failed){
-                    editor.mod.collab.doc.merge.mergedDocMap.appendMap(mappedStep.getMap())
-                    rebasedMapping.appendMap(mappedStep.getMap())
-                    rebasedMapping.setMirror(tr.steps.length-stepIndex-1,(tr.steps.length+editor.mod.collab.doc.merge.mergedDocMap.maps.length-1))
-                }
-            }
-            if(tra.steps.length < diffData.steps.length){
-                addAlert('warning',gettext("The change could not be applied automatically.Please consider using the copy option to copy the changes."))
-            } else {
-                mergeView.dispatch(tra)    
-                // Remove the insertion mark!!
-                removeFigureMarks(originalView,diffData.from,diffData.to)
-            }
-        } catch (exc) {
             addAlert('warning',gettext("The change could not be applied automatically.Please consider using the copy option to copy the changes."))
         }
     }
@@ -220,7 +220,7 @@ export const diffPlugin = function(options) {
                     `<div class="drop-up-head">
                         ${
                             diffMark.attrs.diff ?
-                            `<div class="link-title">${gettext('Diff')}:&nbsp;</div>` :
+                            `<div class="link-title">${gettext('Change')}:&nbsp; ${ (diffMark.attrs.diff.search('deleted') !=-1) ? (diffMark.attrs.diff.search('offline') !=-1 ? gettext('Deleted by you') :gettext('Deleted by Online user')):''}</div>` :
                             ''
                         }
                     </div>
@@ -245,11 +245,8 @@ export const diffPlugin = function(options) {
                 event => {
                     event.preventDefault()
                     event.stopImmediatePropagation()
-                    if(diffMark.image){
-                        acceptImageChange(diffMark,editor,editor.mod.collab.doc.merge.mergeView2,view,tr)
-                    } else {
-                        acceptChanges(diffMark,editor,editor.mod.collab.doc.merge.mergeView2,view,tr)
-                    }
+                    console.log(diffMark)
+                    acceptChanges(diffMark,editor,editor.mod.collab.doc.merge.mergeView2,view,tr)
                 }
             )
         }
@@ -259,11 +256,7 @@ export const diffPlugin = function(options) {
                 () => {
                     event.preventDefault()
                     event.stopImmediatePropagation()
-                    if(diffMark.image){
-                        removeFigureMarks(view,diffMark.attrs.diffData[0].from,diffMark.attrs.diffData[0].to)
-                    } else {
-                        rejectChanges(view,diffMark,editor)
-                    }
+                    rejectChanges(view,diffMark,editor)
                 }
             )
         }
@@ -274,11 +267,7 @@ export const diffPlugin = function(options) {
                 event => {
                     event.preventDefault()
                     event.stopImmediatePropagation()
-                    if(diffMark.image){
-                        copyChange(view,diffMark.attrs.diffData[0].from,diffMark.attrs.diffData[0].to)
-                    } else {
-                        copyChange(view,diffMark.attrs.from,diffMark.attrs.to)
-                    }
+                    copyChange(view,diffMark.attrs.from,diffMark.attrs.to)
                 }
             )
         }
