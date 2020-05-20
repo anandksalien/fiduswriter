@@ -36,3 +36,6 @@ hr.selected-dec{
 .merged-view{
     border:2px solid black
 }
+#editor-diff-1,#editor-diff,#editor-diff-2{
+    width:33%;
+}

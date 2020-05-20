@@ -147,11 +147,34 @@ export class Merge{
         usedImages.forEach(id => {
             if (!this.mod.editor.mod.db.imageDB.db[id] && oldImageDB[id]) {
                 // If the image was uploaded by the offline user we know that he may not have deleted it so we can resend it normally
-                if(Object.keys(this.mod.editor.app.imageDB.db).includes(id)){
+                if(Object.keys(this.mod.editor.app.imageDB.db).includes(
+                    String(id))){
                     this.mod.editor.mod.db.imageDB.setImage(id, oldImageDB[id])
                 } else {
                     // If the image was uploaded by someone else , to set the image we have to reupload it again as there is backend check to associate who can add an image with the image owner.
-                    this.mod.editor.mod.db.imageDB.reUploadImage(id,oldImageDB[id].image,oldImageDB[id].title,oldImageDB[id].copyright)
+                    this.mod.editor.mod.db.imageDB.reUploadImage(id,oldImageDB[id].image,oldImageDB[id].title,oldImageDB[id].copyright).then(
+                        ({id,new_id})=>{
+                            // Update the image node if there are any re uploaded images.
+                            this.mergeView1.state.doc.descendants((node, pos) => {
+                                if (node.type.name==='figure' && node.attrs.image == id) {
+                                    const attrs = Object.assign({}, node.attrs)
+                                    attrs["image"] = new_id
+                                    const nodeType = this.mergeView1.state.schema.nodes['figure']
+                                    const transaction = this.mergeView1.state.tr.setNodeMarkup(pos, nodeType, attrs)
+                                    this.mergeView1.dispatch(transaction)
+                                }
+                            })
+                            this.mergeView2.state.doc.descendants((node, pos) => {
+                                if (node.type.name==='figure' && node.attrs.image == id) {
+                                    const attrs = Object.assign({}, node.attrs)
+                                    attrs["image"] = new_id
+                                    const nodeType = this.mergeView2.state.schema.nodes['figure']
+                                    const transaction = this.mergeView2.state.tr.setNodeMarkup(pos, nodeType, attrs)
+                                    this.mergeView2.dispatch(transaction)
+                                }
+                            })
+                        }
+                    )
                 }
             }
         })
@@ -312,7 +335,6 @@ export class Merge{
         return dialog
     }
 
-
     updateMarkData(tr){
         // Update the range inside the marks !!
         const initialdiffMap = tr.getMeta('initialDiffMap')
@@ -439,7 +461,6 @@ export class Merge{
         this.mergeView2 = this.bindEditorView('editor-diff',cpDoc)
         this.mergeView3 = this.bindEditorView('editor-diff-2',onlineDoc)
         
-
         const offlineChangeset = this.changeSet(offlineTr)
         const onlineChangeset = this.changeSet(onlineTr)
 
@@ -454,8 +475,8 @@ export class Merge{
 
     diffMerge(cpDoc,offlineDoc,onlineDoc,offlineTr,onlineTr,data){
         // Update the Bib and image DB before hand with the data from the offline document and the socket data.
-        this.updateDB(offlineDoc,data) // Updating the editor DB is one-time operation.
         this.openDiffEditors(cpDoc,offlineDoc,onlineDoc,offlineTr,onlineTr)
+        this.updateDB(offlineDoc,data) // Updating the editor DB is one-time operation.
     }
 
     autoMerge(unconfirmedTr,lostTr,data){
