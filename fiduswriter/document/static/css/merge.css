@@ -39,3 +39,44 @@ hr.selected-dec{
 #editor-diff-1,#editor-diff,#editor-diff-2{
     width:33%;
 }
+
+/* Footnote Node View Related CSS */
+footnote {
+    display: inline-block;
+    position: relative;
+    cursor: pointer;
+}
+footnote::after {
+    content: counter(prosemirror-footnote);
+    vertical-align: super;
+    font-size: 75%;
+    counter-increment: prosemirror-footnote;
+}
+.ProseMirror-hideselection .footnote-tooltip *::selection { background-color: transparent; }
+.ProseMirror-hideselection .footnote-tooltip *::-moz-selection { background-color: transparent; }
+.footnote-tooltip {
+    cursor: auto;
+    position: absolute;
+    left: -30px;
+    top: calc(100% + 10px);
+    background: silver;
+    padding: 3px;
+    border-radius: 2px;
+    width: auto;
+}
+.footnote-tooltip::before {
+    border: 5px solid silver;
+    border-top-width: 0px;
+    border-left-color: transparent;
+    border-right-color: transparent;
+    position: absolute;
+    top: -5px;
+    left: 27px;
+    content: " ";
+    height: 0;
+    width: 0;
+}
+
+footnote div.footnote-tooltip p {
+    margin-bottom: 0px!important;
+}

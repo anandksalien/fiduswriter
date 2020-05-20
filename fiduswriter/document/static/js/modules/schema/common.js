@@ -805,7 +805,7 @@ export const DiffMark = {
     },
     parseDOM: [
         {
-            tag: "span",
+            tag: "span.diff",
             getAttrs(dom) {
                 return {
                 diff:dom.dataset.diff,

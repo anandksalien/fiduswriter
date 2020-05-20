@@ -26,7 +26,7 @@ import {
     trackedTransaction
 } from "../track"
 import { diffPlugin } from "../state_plugins/merge_diff"
-
+import { FootnoteView } from "../footnotes/nodeview"
 export class Merge{
     constructor(mod){
         this.mod = mod
@@ -197,6 +197,7 @@ export class Merge{
                 }
             })
             this.mod.editor.view.dispatch(newTr)
+            this.mod.editor.mod.footnotes.fnEditor.renderAllFootnotes()
         }        
     }
 
@@ -373,8 +374,9 @@ export class Merge{
 
     bindEditorView(elementId,doc){
         // Bind the plugins to the respective views
-        const orignal_plugins = this.mod.editor.statePlugins
-        const plugins = orignal_plugins.map(plugin => {
+        let orignal_plugins = this.mod.editor.statePlugins
+        orignal_plugins = orignal_plugins.filter((plugin,pos)=>pos!=16)
+        const plugins = orignal_plugins.map((plugin,pos) => {
             if (plugin[1]) {
                 return plugin[0](plugin[1](doc))
             } else {
@@ -387,7 +389,6 @@ export class Merge{
                 return plugin[0]()
             }
         }))
-
         const editorView = new EditorView(document.getElementById(elementId), {
             state: EditorState.create({
                 schema: this.mod.editor.schema,
@@ -398,6 +399,9 @@ export class Merge{
                 const mapTr = this.updateMarkData(tr)
                 const newState = editorView.state.apply(mapTr)
                 editorView.updateState(newState)
+            },
+            nodeViews: {
+                footnote(node, view, getPos) { return new FootnoteView(node, view, getPos) }
             }
         })
 
