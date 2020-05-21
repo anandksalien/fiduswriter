@@ -4,7 +4,7 @@ import {
 import {
     EditorView
 } from "prosemirror-view"
-
+import {fnSchema} from "../../schema/footnotes"
 
 export class FootnoteView {
     constructor(node, view, getPos) {
@@ -40,19 +40,18 @@ export class FootnoteView {
         let tooltip = this.dom.appendChild(document.createElement("div"))
         tooltip.className = "footnote-tooltip"
 
-        const doc = this.node.type.schema.nodeFromJSON({
+        const doc = fnSchema.nodeFromJSON({
             type: "doc",
-            content: this.node.attrs.footnote
+            content:[{
+                type:"footnotecontainer",
+                content:this.node.attrs.footnote
+            }]
         })
 
         // And put a sub-ProseMirror into that
         this.innerView = new EditorView(tooltip, {
             state: EditorState.create({
                 doc: doc,
-                //   plugins: [keymap({
-                //     "Mod-z": () => undo(this.outerView.state, this.outerView.dispatch),
-                //     "Mod-y": () => redo(this.outerView.state, this.outerView.dispatch)
-                //   })]
             }),
             dispatchTransaction: this.dispatchInner.bind(this),
             handleDOMEvents: {
@@ -71,19 +70,22 @@ export class FootnoteView {
             this.innerView.destroy()
             this.innerView = null
             this.dom.textContent = ""
+            this.updatedMainEditor = false
         }
     }
 
     updateMainEditor(){
         let outerTr = this.outerView.state.tr
-        const footnoteContent = this.innerView.state.doc.toJSON().content
+        const footnoteContent = this.innerView.state.doc.child(0).toJSON().content
         const pos = this.getPos()
         const node = outerTr.doc.nodeAt(pos)
-        console.log(footnoteContent)
-        outerTr.setNodeMarkup(pos, node.type, {
-            footnote: footnoteContent
-        })
+        if(node){
+            outerTr.setNodeMarkup(pos, node.type, {
+                footnote: footnoteContent
+            })
+        }
         if (outerTr.docChanged) {
+            outerTr.setMeta('fromFootnote',true)
             this.updatedMainEditor = true
             this.outerView.dispatch(outerTr)
         }
