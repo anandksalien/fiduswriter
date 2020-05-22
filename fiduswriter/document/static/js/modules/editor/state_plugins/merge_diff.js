@@ -135,16 +135,6 @@ export const diffPlugin = function(options) {
                     rebasedMapping.appendMap(mappedStep.getMap())
                     rebasedMapping.setMirror(tr.steps.length-stepIndex-1,(tr.steps.length+mergedDocMap.maps.length-1))
                 }
-                // Put the proper mark steps back again
-                for(let step of tr.steps){
-                    if(step instanceof AddMarkStep || step instanceof RemoveMarkStep){
-                        if(step.from>=from && step.to <= to){
-                            if(step.map(rebasedMapping)){
-                                insertionTr.maybeStep(step.map(rebasedMapping))
-                            }
-                        }
-                    }
-                }
             }
             // Make sure that all the content steps are present in the new transaction
             if(insertionTr.steps.length < steps.length){

@@ -439,7 +439,7 @@ export class Merge{
         // Mark the insertions in insertion View & deletions in deletionView
         const insertionMarksTr = insertionView.state.tr
         const deletionMarksTr = deletionView.state.tr
-        const stepsTrackedByChangeset = []
+        let stepsTrackedByChangeset = []
         // Use the changeset to create the marks
         changeset.changes.forEach(change=>{
             if(change.inserted.length>0){
@@ -455,14 +455,18 @@ export class Merge{
                         if(Step1.slice && Step1.slice.content.length == 1 && Step1.slice.content[0].type === "footnote"){
                             steps_involved.push(index)
                         }
+                    } else if (step.from >= change.fromB && step.to<=change.toB && step instanceof AddMarkStep && !steps_involved.includes(index)){
+                        const Step1 = step.toJSON()
+                        if(Step1.mark && ["strong","em","underline","link"].includes(Step1.mark.type)){
+                            steps_involved.push(index)
+                        }
                     }
                 })
-
                 steps_involved.sort((a,b)=>a-b)
                 const insertionMark = this.mod.editor.schema.marks.DiffMark.create({diff:insertionClass,steps:JSON.stringify(steps_involved),from:change.fromB,to:change.toB})
                 insertionMarksTr.addMark(change.fromB,change.toB,insertionMark)
                 this.markImageDiffs(insertionMarksTr,change.fromB,change.toB,insertionClass,steps_involved)
-                stepsTrackedByChangeset.concat(steps_involved)
+                stepsTrackedByChangeset=stepsTrackedByChangeset.concat(steps_involved)
             } if (change.deleted.length>0){
                 let steps_involved = []
                 change.deleted.forEach(deletion=>steps_involved.push(parseInt(deletion.data.step)))
@@ -478,26 +482,33 @@ export class Merge{
                         }
                     }
                 })
-
                 steps_involved.sort((a,b)=>a-b)
                 const deletionMark = this.mod.editor.schema.marks.DiffMark.create({diff:deletionClass,steps:JSON.stringify(steps_involved),from:change.fromA,to:change.toA})
                 deletionMarksTr.addMark(change.fromA,change.toA,deletionMark)
                 this.markImageDiffs(deletionMarksTr,change.fromA,change.toA,deletionClass,steps_involved)
-                stepsTrackedByChangeset.concat(steps_involved)
+                stepsTrackedByChangeset=stepsTrackedByChangeset.concat(steps_involved)
             }
         })
 
-
+        console.log(stepsTrackedByChangeset)
         // Add all the footnote related steps that are not tracked by changeset!!!!!
-        const steps_involved = []
         tr.steps.forEach((step,index)=>{
             if(step instanceof ReplaceStep && !stepsTrackedByChangeset.includes(index)){
                 const Step1 = step.toJSON()
                 if(Step1.slice && Step1.slice.content.length == 1 && Step1.slice.content[0].type === "footnote"){
-                    steps_involved.push(index)
-                    steps_involved.sort((a,b)=>a-b)
-                    const insertionMark = this.mod.editor.schema.marks.DiffMark.create({diff:insertionClass,steps:JSON.stringify(steps_involved),from:Step1.from,to:Step1.to})
+                    const insertionMark = this.mod.editor.schema.marks.DiffMark.create({diff:insertionClass,steps:JSON.stringify([index]),from:Step1.from,to:Step1.to})
                     insertionMarksTr.addMark(Step1.from,Step1.to,insertionMark)
+                }
+            } else if ((step instanceof AddMarkStep || step instanceof RemoveMarkStep ) && !stepsTrackedByChangeset.includes(index)){
+                const Step1 = step.toJSON()
+                if(Step1.mark && ["strong","em","underline","link"].includes(Step1.mark.type)){
+                    if(step instanceof AddMarkStep){
+                        const insertionMark = this.mod.editor.schema.marks.DiffMark.create({diff:insertionClass,steps:JSON.stringify([index]),from:Step1.from,to:Step1.to})
+                        insertionMarksTr.addMark(Step1.from,Step1.to,insertionMark)
+                    } else {
+                        const deletionMark = this.mod.editor.schema.marks.DiffMark.create({diff:deletionClass,steps:JSON.stringify([index]),from:Step1.from,to:Step1.to})
+                        deletionMarksTr.addMark(Step1.from,Step1.to,deletionMark)
+                    }
                 }
             }
         })
