@@ -72,7 +72,6 @@ export class FootnoteView {
             this.innerView = null
             this.dom.textContent = ""
             this.updatedMainEditor = false
-            this.editor=null
         }
     }
 
@@ -108,6 +107,7 @@ export class FootnoteView {
     }
 
     destroy() {
+        this.outerView = null
         if (this.innerView) this.close()
     }
 

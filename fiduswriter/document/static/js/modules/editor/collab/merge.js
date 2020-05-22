@@ -198,6 +198,7 @@ export class Merge{
                     maps.setMirror(tr.steps.length-index-1,(tr.steps.length+OnlineStepsLost.steps.length+newTr.steps.length-1))
                 }
             })
+            newTr.setMeta('remote',true)
             this.mod.editor.view.dispatch(newTr)
             this.mod.editor.mod.footnotes.fnEditor.renderAllFootnotes()
         }        
@@ -392,24 +393,45 @@ export class Merge{
                 return plugin[0]()
             }
         }))
-        const editorView = new EditorView(document.getElementById(elementId), {
-            state: EditorState.create({
-                schema: this.mod.editor.schema,
-                doc: doc,
-                plugins:plugins,
-            }),
-            dispatchTransaction: tr => {
-                const mapTr = this.updateMarkData(tr)
-                const newState = editorView.state.apply(mapTr)
-                editorView.updateState(newState)
-            },
-            nodeViews: {
-                footnote(node, view, getPos ) { return new FootnoteView(node, view, getPos ,editor) }
-            }
-        })
+        let editorView
+        if(elementId == "editor-diff"){
+            editorView = new EditorView(document.getElementById(elementId), {
+                state: EditorState.create({
+                    schema: this.mod.editor.schema,
+                    doc: doc,
+                    plugins:plugins,
+                }),
+                dispatchTransaction: tr => {
+                    const mapTracked = tr.getMeta('mapTracked')
+                    if(!mapTracked)
+                        this.mergedDocMap.appendMapping(tr.mapping)
+                    const mapTr = this.updateMarkData(tr)
+                    const newState = editorView.state.apply(mapTr)
+                    editorView.updateState(newState)
+                },
+                nodeViews: {
+                    footnote(node, view, getPos ) { return new FootnoteView(node, view, getPos ,editor) }
+                }
+            })
 
+        } else {
+            editorView = new EditorView(document.getElementById(elementId), {
+                state: EditorState.create({
+                    schema: this.mod.editor.schema,
+                    doc: doc,
+                    plugins:plugins,
+                }),
+                dispatchTransaction: tr => {
+                    const mapTr = this.updateMarkData(tr)
+                    const newState = editorView.state.apply(mapTr)
+                    editorView.updateState(newState)
+                },
+                nodeViews: {
+                    footnote(node, view, getPos ) { return new FootnoteView(node, view, getPos ,editor) }
+                }
+            })
+        }
         return editorView 
-
     }
 
     markChangesinDiffEditor(changeset,insertionView,deletionView,insertionClass,deletionClass,tr){
@@ -499,10 +521,10 @@ export class Merge{
         this.mergeDialog.open()
         this.offlineTr = offlineTr
         this.onlineTr = onlineTr
-
         console.log("ONLINE",onlineTr)
         console.log("OFFLINE",offlineTr)
 
+        this.mergedDocMap = new Mapping()
         // Create multiple editor views
         this.mergeView1 = this.bindEditorView('editor-diff-1',offlineDoc)
         this.mergeView2 = this.bindEditorView('editor-diff',cpDoc)
@@ -516,8 +538,6 @@ export class Merge{
 
         this.offlineMarkSteps = this.findMarkSteps(offlineTr,offlineChangeset)
         this.onlineMarkSteps = this.findMarkSteps(onlineTr,onlineChangeset)
-        
-        this.mergedDocMap = new Mapping()
     }
 
     diffMerge(cpDoc,offlineDoc,onlineDoc,offlineTr,onlineTr,data){

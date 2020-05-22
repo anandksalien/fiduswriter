@@ -150,6 +150,7 @@ export const diffPlugin = function(options) {
             if(insertionTr.steps.length < steps.length){
                 addAlert('warning',gettext("The change could not be applied automatically.Please consider using the copy option to copy the changes."))
             } else {
+                insertionTr.setMeta('mapTracked',true)
                 mergeView.dispatch(insertionTr)
                 // Remove the diff mark
                 removeMarks(originalView,from,to,editor.schema.marks.DiffMark)
