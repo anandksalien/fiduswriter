@@ -5,14 +5,16 @@ import {
     EditorView
 } from "prosemirror-view"
 import {fnSchema} from "../../schema/footnotes"
-
+import {
+    amendTransaction
+} from "../track"
 export class FootnoteView {
-    constructor(node, view, getPos) {
-        console.log("FootenoteVIEW insatan")
+    constructor(node, view, getPos ,editor) {
         // We'll need these later
         this.node = node
         this.outerView = view
         this.getPos = getPos
+        this.editor = editor
 
         // The node's representation in the editor (empty, for now)
         this.dom = document.createElement("footnote")
@@ -30,7 +32,6 @@ export class FootnoteView {
     }
 
     deselectNode() {
-        console.log("Dekselecnode")
         this.dom.classList.remove("ProseMirror-selectednode")
         if (this.innerView) this.close()
     }
@@ -63,7 +64,7 @@ export class FootnoteView {
     }
 
     close() {
-        if(!this.updatedMainEditor){
+        if(!this.updatedMainEditor && this.outerView){
             this.updateMainEditor()
         }
         if(this.innerView){
@@ -71,6 +72,7 @@ export class FootnoteView {
             this.innerView = null
             this.dom.textContent = ""
             this.updatedMainEditor = false
+            this.editor=null
         }
     }
 
@@ -92,10 +94,11 @@ export class FootnoteView {
     }
 
     dispatchInner(tr) {
+        const trackedTr = amendTransaction(tr, this.innerView.state, this.editor)
         let {
             state,
             transactions
-        } = this.innerView.state.applyTransaction(tr)
+        } = this.innerView.state.applyTransaction(trackedTr)
         this.innerView.updateState(state)
     }
 

@@ -131,7 +131,7 @@ export class ModCollabDoc {
             this.mod.editor.view.dispatch(receiveTransaction(
                 this.mod.editor.view.state,
                 rollbackTr.steps,
-                rollbackTr.steps.map(_step => 'remote')
+                rollbackTr.steps.map(_step => this.mod.editor.client_id)
             ).setMeta('remote',true))
             
             const toDoc = this.mod.editor.schema.nodeFromJSON({type:'doc', content:[

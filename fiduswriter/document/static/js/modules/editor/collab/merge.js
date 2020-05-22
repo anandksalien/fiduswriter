@@ -12,7 +12,9 @@ import {
 import {
     Mapping,
     AddMarkStep,
-    RemoveMarkStep
+    RemoveMarkStep,
+    Step,
+    ReplaceStep
 } from "prosemirror-transform"
 import {
     showSystemMessage,
@@ -373,6 +375,7 @@ export class Merge{
     }
 
     bindEditorView(elementId,doc){
+        const editor = this.mod.editor
         // Bind the plugins to the respective views
         let orignal_plugins = this.mod.editor.statePlugins
         orignal_plugins = orignal_plugins.filter((plugin,pos)=>pos!=16)
@@ -401,7 +404,7 @@ export class Merge{
                 editorView.updateState(newState)
             },
             nodeViews: {
-                footnote(node, view, getPos) { return new FootnoteView(node, view, getPos) }
+                footnote(node, view, getPos ) { return new FootnoteView(node, view, getPos ,editor) }
             }
         })
 
@@ -409,12 +412,12 @@ export class Merge{
 
     }
 
-    markChangesinDiffEditor(changeset,insertionView,deletionView,insertionClass,deletionClass){
+    markChangesinDiffEditor(changeset,insertionView,deletionView,insertionClass,deletionClass,tr){
 
         // Mark the insertions in insertion View & deletions in deletionView
         const insertionMarksTr = insertionView.state.tr
         const deletionMarksTr = deletionView.state.tr
-
+        const stepsTrackedByChangeset = []
         // Use the changeset to create the marks
         changeset.changes.forEach(change=>{
             if(change.inserted.length>0){
@@ -422,21 +425,61 @@ export class Merge{
                 change.inserted.forEach(insertion=>steps_involved.push(parseInt(insertion.data.step)))
                 const stepsSet = new Set(steps_involved)
                 steps_involved = Array.from(stepsSet)
+                
+                // Add the footnote related steps because the changeset tracks insertion but misses some steps!
+                tr.steps.forEach((step,index)=>{
+                    if(step.from >= change.fromB && step.to<=change.toB && step instanceof ReplaceStep && !steps_involved.includes(index)){
+                        const Step1 = step.toJSON()
+                        if(Step1.slice && Step1.slice.content.length == 1 && Step1.slice.content[0].type === "footnote"){
+                            steps_involved.push(index)
+                        }
+                    }
+                })
+
                 steps_involved.sort((a,b)=>a-b)
                 const insertionMark = this.mod.editor.schema.marks.DiffMark.create({diff:insertionClass,steps:JSON.stringify(steps_involved),from:change.fromB,to:change.toB})
                 insertionMarksTr.addMark(change.fromB,change.toB,insertionMark)
                 this.markImageDiffs(insertionMarksTr,change.fromB,change.toB,insertionClass,steps_involved)
+                stepsTrackedByChangeset.concat(steps_involved)
             } if (change.deleted.length>0){
                 let steps_involved = []
                 change.deleted.forEach(deletion=>steps_involved.push(parseInt(deletion.data.step)))
                 const stepsSet = new Set(steps_involved)
                 steps_involved = Array.from(stepsSet)
+
+                // Add the deletion related footnote steps properly too!
+                tr.steps.forEach((step,index)=>{
+                    if(step.from >= change.fromA && step.to<=change.toA && step instanceof ReplaceStep && !steps_involved.includes(index)){
+                        const Step1 = step.toJSON()
+                        if(Step1.slice && Step1.slice.content.length == 1 && Step1.slice.content[0].type === "footnote"){
+                            steps_involved.push(index)
+                        }
+                    }
+                })
+
                 steps_involved.sort((a,b)=>a-b)
                 const deletionMark = this.mod.editor.schema.marks.DiffMark.create({diff:deletionClass,steps:JSON.stringify(steps_involved),from:change.fromA,to:change.toA})
                 deletionMarksTr.addMark(change.fromA,change.toA,deletionMark)
                 this.markImageDiffs(deletionMarksTr,change.fromA,change.toA,deletionClass,steps_involved)
+                stepsTrackedByChangeset.concat(steps_involved)
             }
         })
+
+
+        // Add all the footnote related steps that are not tracked by changeset!!!!!
+        const steps_involved = []
+        tr.steps.forEach((step,index)=>{
+            if(step instanceof ReplaceStep && !stepsTrackedByChangeset.includes(index)){
+                const Step1 = step.toJSON()
+                if(Step1.slice && Step1.slice.content.length == 1 && Step1.slice.content[0].type === "footnote"){
+                    steps_involved.push(index)
+                    steps_involved.sort((a,b)=>a-b)
+                    const insertionMark = this.mod.editor.schema.marks.DiffMark.create({diff:insertionClass,steps:JSON.stringify(steps_involved),from:Step1.from,to:Step1.to})
+                    insertionMarksTr.addMark(Step1.from,Step1.to,insertionMark)
+                }
+            }
+        })
+
 
         // Dispatch the transactions
         insertionMarksTr.setMeta('initialDiffMap',true)
@@ -468,8 +511,8 @@ export class Merge{
         const offlineChangeset = this.changeSet(offlineTr)
         const onlineChangeset = this.changeSet(onlineTr)
 
-        this.markChangesinDiffEditor(offlineChangeset,this.mergeView1,this.mergeView2,"offline-inserted","offline-deleted")
-        this.markChangesinDiffEditor(onlineChangeset,this.mergeView3,this.mergeView2,"online-inserted","online-deleted")
+        this.markChangesinDiffEditor(offlineChangeset,this.mergeView1,this.mergeView2,"offline-inserted","offline-deleted",offlineTr)
+        this.markChangesinDiffEditor(onlineChangeset,this.mergeView3,this.mergeView2,"online-inserted","online-deleted",onlineTr)
 
         this.offlineMarkSteps = this.findMarkSteps(offlineTr,offlineChangeset)
         this.onlineMarkSteps = this.findMarkSteps(onlineTr,onlineChangeset)
