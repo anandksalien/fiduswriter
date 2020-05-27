@@ -5,7 +5,6 @@ import {
 import {
     ChangeSet
 } from 'prosemirror-changeset'
-
 import {
     EditorView
 } from "prosemirror-view"
@@ -13,22 +12,53 @@ import {
     Mapping,
     AddMarkStep,
     RemoveMarkStep,
-    Step,
     ReplaceStep
 } from "prosemirror-transform"
 import {
     showSystemMessage,
     Dialog,
-    addAlert
 } from "../../common"
 import {
     recreateTransform
 } from "./recreate_transform"
 import {
-    trackedTransaction
+    trackedTransaction,
 } from "../track"
 import { diffPlugin } from "../state_plugins/merge_diff"
 import { FootnoteView } from "../footnotes/nodeview"
+import {
+    baseKeymap
+} from "prosemirror-commands"
+import {
+    keymap
+} from "prosemirror-keymap"
+import {
+    collab
+} from "prosemirror-collab"
+import {
+    history
+} from "prosemirror-history"
+import {
+    tableEditing
+} from "prosemirror-tables"
+import {
+    dropCursor
+} from "prosemirror-dropcursor"
+import {
+    gapCursor
+} from "prosemirror-gapcursor"
+import {
+    buildKeymap
+} from "prosemirror-example-setup"
+import {
+    jumpHiddenNodesPlugin,
+    searchPlugin,
+} from "../state_plugins"
+import {
+    buildEditorKeymap
+} from "../keymap"
+import {BIBLIOGRAPHY_HEADERS} from "../../schema/i18n"
+import {RenderCitations} from "../../citations/render"
 export class Merge{
     constructor(mod){
         this.mod = mod
@@ -41,7 +71,19 @@ export class Merge{
         this.mergedDocMap = false
         this.offlineTr = false
         this.onlineTr = false
-        this.diffPlugin = [[diffPlugin,()=>({editor:this.mod.editor})]]
+        this.diffPlugin = [
+            [diffPlugin,()=>({editor:this.mod.editor})],
+            [keymap, () => buildEditorKeymap(this.mod.editor.schema)],
+            [keymap, () => buildKeymap(this.mod.editor.schema)],
+            [keymap, () => baseKeymap],
+            [collab, () => ({clientID: this.mod.editor.client_id})],
+            [history],
+            [dropCursor],
+            [gapCursor],
+            [tableEditing],
+            [jumpHiddenNodesPlugin],
+            [searchPlugin],
+        ]
     }
 
     trDoc(tr, index = 0) {
@@ -269,6 +311,7 @@ export class Merge{
                 }
             }
         )
+        tr.setMeta('notrack',true)
         view.dispatch(tr)
     }
 
@@ -284,34 +327,34 @@ export class Merge{
             classes: 'fw-dark',
             click: () => {
                 // Remove all diff related marks
-                const DiffRemovalTr = this.mergeView2.state.tr
+                const DiffRemovalTr = this.mergeView2.state.tr.setMeta('notrack',true)
                 DiffRemovalTr.removeMark(0,this.mergeView2.state.doc.content.size,this.mod.editor.schema.marks.DiffMark)
                 this.removeFigureMarks(this.mergeView2,0,this.mergeView2.state.doc.content.size)
                 this.mergeView2.dispatch(DiffRemovalTr)
                 
                 // Apply all the marks that are not handled by recreate steps!
-                const markTr = this.mergeView2.state.tr
-                const offlineRebaseMapping = new Mapping()
-                offlineRebaseMapping.appendMappingInverted(offlineTr.mapping)
-                offlineRebaseMapping.appendMapping(this.mergedDocMap)
-                this.offlineMarkSteps.forEach(markstep=>{
-                    const offlineRebaseMap = offlineRebaseMapping.slice(offlineTr.steps.indexOf(markstep))
-                    const mappedMarkStep = markstep.map(offlineRebaseMap)
-                    if(mappedMarkStep){
-                        markTr.maybeStep(mappedMarkStep)
-                    } 
-                })
-                const onlineRebaseMapping = new Mapping()
-                onlineRebaseMapping.appendMappingInverted(onlineTr.mapping)
-                onlineRebaseMapping.appendMapping(this.mergedDocMap)
-                this.onlineMarkSteps.forEach(markstep=>{
-                    const onlineRebaseMap = onlineRebaseMapping.slice(onlineTr.steps.indexOf(markstep))
-                    const mappedMarkStep = markstep.map(onlineRebaseMap)
-                    if(mappedMarkStep){
-                        markTr.maybeStep(mappedMarkStep)
-                    }
-                })
-                this.mergeView2.dispatch(markTr)
+                // const markTr = this.mergeView2.state.tr
+                // const offlineRebaseMapping = new Mapping()
+                // offlineRebaseMapping.appendMappingInverted(offlineTr.mapping)
+                // offlineRebaseMapping.appendMapping(this.mergedDocMap)
+                // this.offlineMarkSteps.forEach(markstep=>{
+                //     const offlineRebaseMap = offlineRebaseMapping.slice(offlineTr.steps.indexOf(markstep))
+                //     const mappedMarkStep = markstep.map(offlineRebaseMap)
+                //     if(mappedMarkStep){
+                //         markTr.maybeStep(mappedMarkStep)
+                //     } 
+                // })
+                // const onlineRebaseMapping = new Mapping()
+                // onlineRebaseMapping.appendMappingInverted(onlineTr.mapping)
+                // onlineRebaseMapping.appendMapping(this.mergedDocMap)
+                // this.onlineMarkSteps.forEach(markstep=>{
+                //     const onlineRebaseMap = onlineRebaseMapping.slice(onlineTr.steps.indexOf(markstep))
+                //     const mappedMarkStep = markstep.map(onlineRebaseMap)
+                //     if(mappedMarkStep){
+                //         markTr.maybeStep(mappedMarkStep)
+                //     }
+                // })
+                // this.mergeView2.dispatch(markTr)
                 this.mergeDialog.close()
                 const mergedDoc = this.mergeView2.state.doc
                 //CleanUp
@@ -380,19 +423,13 @@ export class Merge{
         // Bind the plugins to the respective views
         let orignal_plugins = this.mod.editor.statePlugins
         orignal_plugins = orignal_plugins.filter((plugin,pos)=>pos!=16)
-        const plugins = orignal_plugins.map((plugin,pos) => {
+        const plugins = this.diffPlugin.map(plugin=>{
             if (plugin[1]) {
                 return plugin[0](plugin[1](doc))
             } else {
                 return plugin[0]()
             }
-        }).concat(this.diffPlugin.map(plugin=>{
-            if (plugin[1]) {
-                return plugin[0](plugin[1](doc))
-            } else {
-                return plugin[0]()
-            }
-        }))
+        })
         let editorView
         if(elementId == "editor-diff"){
             editorView = new EditorView(document.getElementById(elementId), {
@@ -403,11 +440,22 @@ export class Merge{
                 }),
                 dispatchTransaction: tr => {
                     const mapTracked = tr.getMeta('mapTracked')
+                    const notTrack = tr.getMeta('notrack')
                     if(!mapTracked)
                         this.mergedDocMap.appendMapping(tr.mapping)
-                    const mapTr = this.updateMarkData(tr)
+                    let mapTr = this.updateMarkData(tr)
+                    if(!notTrack){
+                        mapTr = trackedTransaction(
+                            mapTr,
+                            this.mergeView2.state,
+                            this.mod.editor.user,
+                            !this.mergeView2.state.doc.firstChild.attrs.tracked && this.mod.editor.docInfo.access_rights !== 'write-tracked',
+                            Date.now() - this.mod.editor.clientTimeAdjustment
+                        )
+                    }
                     const newState = editorView.state.apply(mapTr)
                     editorView.updateState(newState)
+                    this.renderCitation(editorView,elementId)
                 },
                 nodeViews: {
                     footnote(node, view, getPos ) { return new FootnoteView(node, view, getPos ,editor) }
@@ -425,6 +473,7 @@ export class Merge{
                     const mapTr = this.updateMarkData(tr)
                     const newState = editorView.state.apply(mapTr)
                     editorView.updateState(newState)
+                    this.renderCitation(editorView,elementId)
                 },
                 nodeViews: {
                     footnote(node, view, getPos ) { return new FootnoteView(node, view, getPos ,editor) }
@@ -457,9 +506,14 @@ export class Merge{
                         }
                     } else if (step.from >= change.fromB && step.to<=change.toB && step instanceof AddMarkStep && !steps_involved.includes(index)){
                         const Step1 = step.toJSON()
-                        if(Step1.mark && ["strong","em","underline","link"].includes(Step1.mark.type)){
+                        if(Step1.mark && ["strong","em","underline","link","deletion"].includes(Step1.mark.type)){
                             steps_involved.push(index)
-                        }
+                        } 
+                        // Disabled tracking of the changes temporarily.!
+                        // else if  (Step1.mark.type == "insertion" && Step1.mark.attrs.approved === false){
+                        //     console.log("Adding step within changeset!!!!!!1")
+                        //     steps_involved.push(index)
+                        // }
                     }
                 })
                 steps_involved.sort((a,b)=>a-b)
@@ -490,26 +544,69 @@ export class Merge{
             }
         })
 
-        console.log(stepsTrackedByChangeset)
+
         // Add all the footnote related steps that are not tracked by changeset!!!!!
         tr.steps.forEach((step,index)=>{
+            const from = tr.mapping.slice(index).map(step.from)
+            const to = tr.mapping.slice(index).map(step.to,-1)
             if(step instanceof ReplaceStep && !stepsTrackedByChangeset.includes(index)){
                 const Step1 = step.toJSON()
                 if(Step1.slice && Step1.slice.content.length == 1 && Step1.slice.content[0].type === "footnote"){
-                    const insertionMark = this.mod.editor.schema.marks.DiffMark.create({diff:insertionClass,steps:JSON.stringify([index]),from:Step1.from,to:Step1.to})
-                    insertionMarksTr.addMark(Step1.from,Step1.to,insertionMark)
+                    const insertionMark = this.mod.editor.schema.marks.DiffMark.create({diff:insertionClass,steps:JSON.stringify([index]),from:from,to:to})
+                    insertionMarksTr.addMark(from,to,insertionMark)
+                } else if(Step1.slice && Step1.slice.content.length == 1 && Step1.slice.content[0].type === "citation"){
+                    const insertionMark = this.mod.editor.schema.marks.DiffMark.create({diff:insertionClass,steps:JSON.stringify([index]),from:from,to:to})
+                    insertionMarksTr.addMark(from,to,insertionMark)
                 }
-            } else if ((step instanceof AddMarkStep || step instanceof RemoveMarkStep ) && !stepsTrackedByChangeset.includes(index)){
+            } 
+            else if ((step instanceof AddMarkStep || step instanceof RemoveMarkStep ) && !stepsTrackedByChangeset.includes(index)){
                 const Step1 = step.toJSON()
-                if(Step1.mark && ["strong","em","underline","link"].includes(Step1.mark.type)){
+                if(Step1.mark && ["strong","em","underline","link","deletion"].includes(Step1.mark.type)){
                     if(step instanceof AddMarkStep){
-                        const insertionMark = this.mod.editor.schema.marks.DiffMark.create({diff:insertionClass,steps:JSON.stringify([index]),from:Step1.from,to:Step1.to})
-                        insertionMarksTr.addMark(Step1.from,Step1.to,insertionMark)
+                        const insertionMark = this.mod.editor.schema.marks.DiffMark.create({diff:insertionClass,steps:JSON.stringify([index]),from:from,to:to})
+                        if(insertionMarksTr.doc.rangeHasMark(from,to,insertionMark.type)){
+                            const pos = tr.mapping.slice(index).map(step.to,-1)
+                            const resolvedpos = insertionMarksTr.doc.resolve(pos)
+                            const lastNode = resolvedpos.nodeAfter
+                            let diffMark = lastNode.marks.find(mark=>mark.type.name=="DiffMark")
+                            if(diffMark){
+                                diffMark = (diffMark.attrs)
+                                insertionMarksTr.doc.nodesBetween(diffMark.from,diffMark.to,(node,pos)=>{
+                                    if(node.isInline){
+                                        let locDiffMark = node.marks.find(mark=>mark.type.name=="DiffMark")
+                                        if(locDiffMark){
+                                            locDiffMark = JSON.parse(JSON.stringify(locDiffMark.attrs))
+                                            let steps = JSON.parse(locDiffMark.steps)
+                                            steps.push(index)
+                                            steps = JSON.stringify(steps)
+                                            insertionMarksTr.removeMark(pos,pos+node.nodeSize,this.mod.editor.schema.marks.DiffMark)
+                                            const mark = this.mod.editor.schema.marks.DiffMark.create({diff:diffMark.diff,steps:steps,from:diffMark.from,to:diffMark.to})
+                                            insertionMarksTr.addMark(pos,pos+node.nodeSize,mark)
+                                        }
+                                    }
+                                })
+                            } else {
+                                pos-=1
+                            }
+                        } else {
+                            insertionMarksTr.addMark(from,to,insertionMark)
+                        }
                     } else {
-                        const deletionMark = this.mod.editor.schema.marks.DiffMark.create({diff:deletionClass,steps:JSON.stringify([index]),from:Step1.from,to:Step1.to})
-                        deletionMarksTr.addMark(Step1.from,Step1.to,deletionMark)
+                        const deletionMark = this.mod.editor.schema.marks.DiffMark.create({diff:deletionClass,steps:JSON.stringify([index]),from:from,to:to})
+                        deletionMarksTr.addMark(from,to,deletionMark)
                     }
-                }
+                } 
+                // Disabled tracking of the insertion changes since we use trackedtr at dispatch
+                // else if  (Step1.mark.type == "insertion" && Step1.mark.attrs.approved === false){
+                //     if(step instanceof AddMarkStep){
+                //         const insertionMark = this.mod.editor.schema.marks.DiffMark.create({diff:insertionClass,steps:JSON.stringify([index]),from:from,to:to})
+                //         if(insertionMarksTr.doc.rangeHasMark(from,to,insertionMark.type)){
+                //             insertionMarksTr.doc.nodesBetween(from,to,(node,pos)=>{
+                //                 console.log("N",node)
+                //             })
+                //         }
+                //     }
+                // } 
             }
         })
 
@@ -525,6 +622,19 @@ export class Merge{
         const trackedTr = view.state.tr
         trackedTr.removeMark(from,to,mark)
         view.dispatch(trackedTr)
+    }
+
+    renderCitation(view,elementId){
+        const settings = view.state.doc.firstChild.attrs,
+        bibliographyHeader = settings.bibliography_header[settings.language] || BIBLIOGRAPHY_HEADERS[settings.language]
+        const citRenderer = new RenderCitations(
+            document.getElementById(elementId),
+            settings.citationstyle,
+            bibliographyHeader,
+            this.mod.editor.mod.db.bibDB,
+            this.mod.editor.app.csl
+        )
+        citRenderer.init()
     }
 
     openDiffEditors(cpDoc,offlineDoc,onlineDoc,offlineTr,onlineTr){
@@ -547,8 +657,21 @@ export class Merge{
         this.markChangesinDiffEditor(offlineChangeset,this.mergeView1,this.mergeView2,"offline-inserted","offline-deleted",offlineTr)
         this.markChangesinDiffEditor(onlineChangeset,this.mergeView3,this.mergeView2,"online-inserted","online-deleted",onlineTr)
 
-        this.offlineMarkSteps = this.findMarkSteps(offlineTr,offlineChangeset)
-        this.onlineMarkSteps = this.findMarkSteps(onlineTr,onlineChangeset)
+        if(this.mergeView1.state.doc.firstChild.attrs.tracked || this.mergeView3.state.doc.firstChild.attrs.tracked ){
+            const article = this.mergeView2.state.doc.firstChild
+            const attrs = Object.assign({}, article.attrs)
+            attrs.tracked = true
+            this.mergeView2.dispatch(
+                this.mergeView2.state.tr.setNodeMarkup(0, false, attrs).setMeta('notrack',true)
+            )
+        }
+
+        this.renderCitation(this.mergeView1,'editor-diff-1')
+        this.renderCitation(this.mergeView2,'editor-diff')
+        this.renderCitation(this.mergeView3,'editor-diff-2')
+
+        // this.offlineMarkSteps = this.findMarkSteps(offlineTr,offlineChangeset)
+        // this.onlineMarkSteps = this.findMarkSteps(onlineTr,onlineChangeset)
     }
 
     diffMerge(cpDoc,offlineDoc,onlineDoc,offlineTr,onlineTr,data){
