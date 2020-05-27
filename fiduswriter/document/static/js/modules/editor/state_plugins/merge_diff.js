@@ -1,13 +1,37 @@
 import {Plugin, PluginKey , TextSelection, NodeSelection} from "prosemirror-state"
 import {Decoration, DecorationSet , __serializeForClipboard} from "prosemirror-view"
 import {noSpaceTmp, addAlert} from "../../common"
-import {
-    Mapping,
-    AddMarkStep,
-    RemoveMarkStep
-} from "prosemirror-transform"
+import { Mapping } from "prosemirror-transform"
 
 const key = new PluginKey('mergeDiff')
+
+export const removeMarks = function(view,from,to,mark){
+    const trackedTr = view.state.tr
+        trackedTr.doc.nodesBetween(
+            from,
+            to,
+            (node, pos) => {
+                if (pos < from || ['bullet_list', 'ordered_list'].includes(node.type.name)) {
+                    return true
+                } else if (node.isInline || ['table_row', 'table_cell'].includes(node.type.name)) {
+                    return false
+                }
+                if (node.attrs.diffdata && node.attrs.diffdata.length>0) {
+                    const diffdata = []
+                    trackedTr.setNodeMarkup(pos, null, Object.assign({}, node.attrs, {diffdata}), node.marks)
+                }
+                if (node.type.name==='table') {
+                    // A table was inserted. We don't add track marks to elements inside of it.
+                    return false
+                }
+            }
+        )
+        trackedTr.removeMark(from,to,mark)
+        trackedTr.setMeta('initialDiffMap',true)
+        trackedTr.setMeta('notrack',true)
+        view.dispatch(trackedTr)
+
+}
 
 export const diffPlugin = function(options) {
 
@@ -89,33 +113,6 @@ export const diffPlugin = function(options) {
         let highlightDecos = createHiglightDecoration(diffMark.attrs.from,diffMark.attrs.to,state)
         highlightDecos.push(deco)
         return DecorationSet.create(state.doc,highlightDecos)
-    }
-
-    function removeMarks(view,from,to,mark){
-        const trackedTr = view.state.tr
-        trackedTr.doc.nodesBetween(
-            from,
-            to,
-            (node, pos) => {
-                if (pos < from || ['bullet_list', 'ordered_list'].includes(node.type.name)) {
-                    return true
-                } else if (node.isInline || ['table_row', 'table_cell'].includes(node.type.name)) {
-                    return false
-                }
-                if (node.attrs.diffdata && node.attrs.diffdata.length>0) {
-                    const diffdata = []
-                    trackedTr.setNodeMarkup(pos, null, Object.assign({}, node.attrs, {diffdata}), node.marks)
-                }
-                if (node.type.name==='table') {
-                    // A table was inserted. We don't add track marks to elements inside of it.
-                    return false
-                }
-            }
-        )
-        trackedTr.removeMark(from,to,mark)
-        trackedTr.setMeta('initialDiffMap',true)
-        trackedTr.setMeta('notrack',true)
-        view.dispatch(trackedTr)
     }
 
     function acceptChanges(mark,editor,mergeView,originalView,tr){
