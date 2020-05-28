@@ -594,8 +594,8 @@ export class Merge{
         })
 
         // Dispatch the transactions
-        insertionMarksTr.setMeta('initialDiffMap',true)
-        deletionMarksTr.setMeta('initialDiffMap',true)
+        insertionMarksTr.setMeta('initialDiffMap',true).setMeta('mapTracked',true)
+        deletionMarksTr.setMeta('initialDiffMap',true).setMeta('mapTracked',true)
         insertionView.dispatch(insertionMarksTr)
         deletionView.dispatch(deletionMarksTr)
 

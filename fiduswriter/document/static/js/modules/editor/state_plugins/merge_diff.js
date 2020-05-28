@@ -27,7 +27,7 @@ export const removeMarks = function(view,from,to,mark){
             }
         )
         trackedTr.removeMark(from,to,mark)
-        trackedTr.setMeta('initialDiffMap',true)
+        trackedTr.setMeta('initialDiffMap',true).setMeta('mapTracked',true)
         trackedTr.setMeta('notrack',true)
         view.dispatch(trackedTr)
 
@@ -139,7 +139,7 @@ export const diffPlugin = function(options) {
                 addAlert('warning',gettext("The change could not be applied automatically.Please consider using the copy option to copy the changes."))
             } else {
                 insertionTr.setMeta('mapTracked',true)
-                if(!tr.doc.firstChild.attrs.tracked)
+                if(!tr.doc.firstChild.attrs.tracked && !options.editor.docInfo.access_rights)
                     insertionTr.setMeta('notrack',true)
                 mergeView.dispatch(insertionTr)
                 // Remove the diff mark

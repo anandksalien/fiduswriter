@@ -164,7 +164,7 @@ export class ModCollabDoc {
             
             // If no conflicts arises auto-merge the document
             // if(conflicts.length>0){
-            //     this.merge.openDiffEditors(confirmedState.doc,unconfirmedTr.doc,toDoc,unconfirmedTr,lostTr,data)
+            //     this.merge.diffMerge(confirmedState.doc,unconfirmedTr.doc,toDoc,unconfirmedTr,lostTr,data)
             // } else {
             //     this.merge.autoMerge(unconfirmedTr,lostTr,data)
             // }    
