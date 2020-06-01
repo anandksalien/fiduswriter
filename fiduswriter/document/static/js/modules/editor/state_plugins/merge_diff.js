@@ -115,7 +115,7 @@ export const diffPlugin = function(options) {
         return DecorationSet.create(state.doc,highlightDecos)
     }
 
-    function acceptChanges(mark,editor,mergeView,originalView,tr){
+    function acceptChanges(mark,editor,mergeView,originalView,tr,trType){
         try {
             const mergedDocMap = editor.mod.collab.doc.merge.mergedDocMap
             const insertionTr = mergeView.state.tr
@@ -138,9 +138,23 @@ export const diffPlugin = function(options) {
             if(insertionTr.steps.length < steps.length){
                 addAlert('warning',gettext("The change could not be applied automatically.Please consider using the copy option to copy the changes."))
             } else {
+                const markDependency = editor.mod.collab.doc.merge.Dep
+                steps.forEach(stepIndex=>{
+                    for(let dep_index in markDependency[trType]){
+                        if(markDependency[trType][dep_index].includes(stepIndex)){
+                            markDependency[trType][dep_index] = markDependency[trType][dep_index].filter(value=>value!==stepIndex)
+                            if(markDependency[trType][dep_index].length == 0){
+                                const mapStep = tr.steps[dep_index].map(rebasedMapping)
+                                if(mapStep)
+                                    insertionTr.maybeStep(mapStep)
+                            }
+                        }
+                    }
+                })
+                
                 insertionTr.setMeta('mapTracked',true)
-                if(!tr.doc.firstChild.attrs.tracked && !options.editor.docInfo.access_rights)
-                    insertionTr.setMeta('notrack',true)
+                // if(!tr.doc.firstChild.attrs.tracked && options.editor.docInfo.access_rights !== "write-tracked")
+                insertionTr.setMeta('notrack',true)
                 mergeView.dispatch(insertionTr)
                 // Remove the diff mark
                 removeMarks(originalView,from,to,editor.schema.marks.DiffMark)
@@ -188,6 +202,7 @@ export const diffPlugin = function(options) {
         const dropUp = document.createElement('span'),
         editor = options.editor,requiredPx=10,
         tr = diffMark.attrs.diff.search('offline') != -1 ? editor.mod.collab.doc.merge.offlineTr : editor.mod.collab.doc.merge.onlineTr
+        const trType = diffMark.attrs.diff.search('offline') != -1 ? "offline" : "online"
         let view
         if(diffMark.attrs.diff.search('offline') != -1){
             if(diffMark.attrs.diff.search('inserted') != -1){
@@ -237,7 +252,7 @@ export const diffPlugin = function(options) {
                     event.preventDefault()
                     event.stopImmediatePropagation()
                     console.log(diffMark)
-                    acceptChanges(diffMark,editor,editor.mod.collab.doc.merge.mergeView2,view,tr)
+                    acceptChanges(diffMark,editor,editor.mod.collab.doc.merge.mergeView2,view,tr,trType)
                 }
             )
         }
