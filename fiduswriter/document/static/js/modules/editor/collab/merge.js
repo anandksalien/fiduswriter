@@ -69,7 +69,9 @@ import {
 import {
     RenderCitations
 } from "../../citations/render"
-
+import {
+    mergeHelpTemplate
+} from "../dialogs/merge"
 
 export class Merge{
     constructor(mod){
@@ -139,7 +141,6 @@ export class Merge{
         const invertedMapping = new Mapping()
         invertedMapping.appendMappingInverted(tr.mapping)
 
-        console.log("HEY",changes)
         const insertedsteps = [] , deletedsteps = [] ,ins = [],del = []
         changes.changes.forEach(change=>{
             change.inserted.forEach(inserted=>{
@@ -292,12 +293,36 @@ export class Merge{
         )
     }
 
+    openHelpDialog(){
+        const helpDialog = new Dialog({
+            id: 'editor-merge-help',
+            title: gettext("Instructions for Merge"),
+            body: mergeHelpTemplate,
+            height:600,
+            width:600,
+            buttons:[]
+        })
+        helpDialog.open()
+        const question_items = document.querySelectorAll('.merge-question .fa-plus-circle')
+        question_items.forEach(element=>{
+            element.addEventListener('click',()=>{
+                const answerEle = element.parentNode.nextSibling.nextElementSibling
+                if (answerEle.style.display == ""){
+                    answerEle.style.display = "none"
+                } else if (answerEle.style.display = "none"){
+                    answerEle.style.display = ""
+                }
+            })
+        })
+    }
+
+
     createMergeDialog(offlineTr,onlineTr,onlineDoc){
         const mergeButtons = [{
             text: " Help ",
             classes: 'fw-orange',
             click: () => {
-                console.log("HEY HEY!!!")
+                this.openHelpDialog()
             }
         },{ 
             text: "Merge Complete",
@@ -350,13 +375,17 @@ export class Merge{
                 this.mergeDialog = false
                 this.offlineMarkSteps = false
                 this.onlineMarkSteps = false
+                this.Dep = false
+                this.offStepsNotTracked = false
+                this.onStepsNotTracked = false
+    
                 this.applyChangesToEditor(recreateTransform(onlineDoc,mergedDoc),onlineDoc)
             }
         }]
         const dialog = new Dialog({
             id: 'editor-merge-view',
             title: gettext("Merging Offline Document"),
-            body: `<div style="display:flex"><div class="offline-heading">OFFLINE DOCUMENT</div><div class="merged-heading">MERGED DOCUMENT</div> <div class="online-heading">ONLINE DOCUMENT</div></div><div class= "user-contents" style="display:flex;"><div id="editor-diff-1" style="float:left;padding:15px;"></div><div id="editor-diff" class="merged-view" style="padding:15px;"></div><div id="editor-diff-2" style="float:right;padding:15px;"></div></div>`,
+            body: `<div style="display:flex"><div class="offline-heading">OFFLINE DOCUMENT</div><div class="merged-heading">MERGED DOCUMENT</div> <div class="online-heading">ONLINE DOCUMENT</div></div><div class= "user-contents" style="display:flex;"><div id="editor-diff-1" style="float:left;padding:15px;"></div><div id="editor-diff" class="merged-view" style="padding:15px;"></div><div id="editor-diff-2" style="float:right;padding:15px;"></div></div><div class="help-note"> Note : If this is your first time encountering this dialog please read the instructions for merging by clicking on the Help button.</div>`,
             height:600,
             width:1600,
             buttons:mergeButtons
@@ -426,7 +455,7 @@ export class Merge{
                     if(!mapTracked)
                         this.mergedDocMap.appendMapping(tr.mapping)
                     let mapTr = this.updateMarkData(tr)
-                    if(!notTrack){
+                    if(!notTrack){ // Track only manual insertions
                         mapTr = trackedTransaction(
                             mapTr,
                             this.mergeView2.state,
@@ -478,7 +507,7 @@ export class Merge{
                 const stepsSet = new Set(steps_involved)
                 steps_involved = Array.from(stepsSet)
                 
-                // Add the footnote related steps because the changeset tracks insertion but misses some steps!
+                // Add the footnote related steps because the changeset tracks change but misses some steps related to insertion of footnote node!
                 tr.steps.forEach((step,index)=>{
                     if(step.from >= change.fromB && step.to<=change.toB && step instanceof ReplaceStep && !steps_involved.includes(index)){
                         const Step1 = step.toJSON()
@@ -492,6 +521,7 @@ export class Merge{
                         } 
                     }
                 })
+
                 steps_involved.sort((a,b)=>a-b)
                 const insertionMark = this.mod.editor.schema.marks.DiffMark.create({diff:insertionClass,steps:JSON.stringify(steps_involved),from:change.fromB,to:change.toB})
                 insertionMarksTr.addMark(change.fromB,change.toB,insertionMark)
@@ -502,16 +532,6 @@ export class Merge{
                 change.deleted.forEach(deletion=>steps_involved.push(parseInt(deletion.data.step)))
                 const stepsSet = new Set(steps_involved)
                 steps_involved = Array.from(stepsSet)
-
-                // Add the deletion related footnote steps properly too!
-                tr.steps.forEach((step,index)=>{
-                    if(step.from >= change.fromA && step.to<=change.toA && step instanceof ReplaceStep && !steps_involved.includes(index)){
-                        const Step1 = step.toJSON()
-                        if(Step1.slice && Step1.slice.content.length == 1 && Step1.slice.content[0].type === "footnote"){
-                            steps_involved.push(index)
-                        }
-                    }
-                })
                 steps_involved.sort((a,b)=>a-b)
                 const deletionMark = this.mod.editor.schema.marks.DiffMark.create({diff:deletionClass,steps:JSON.stringify(steps_involved),from:change.fromA,to:change.toA})
                 deletionMarksTr.addMark(change.fromA,change.toA,deletionMark)

@@ -182,7 +182,6 @@ export const diffPlugin = function(options) {
 
         // Copy data to clipboard!!
         document.body.appendChild(dom)
-        console.log(dom)
         var range = document.createRange();
         range.selectNode(dom);
         window.getSelection().addRange(range);
@@ -251,7 +250,6 @@ export const diffPlugin = function(options) {
                 event => {
                     event.preventDefault()
                     event.stopImmediatePropagation()
-                    console.log(diffMark)
                     acceptChanges(diffMark,editor,editor.mod.collab.doc.merge.mergeView2,view,tr,trType)
                 }
             )

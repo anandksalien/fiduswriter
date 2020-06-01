@@ -6,7 +6,7 @@ import {
 } from "prosemirror-view"
 import {fnSchema} from "../../schema/footnotes"
 import {
-    amendTransaction
+    trackedTransaction
 } from "../track"
 export class FootnoteView {
     constructor(node, view, getPos ,editor) {
@@ -93,7 +93,13 @@ export class FootnoteView {
     }
 
     dispatchInner(tr) {
-        const trackedTr = amendTransaction(tr, this.innerView.state, this.editor)
+        const trackedTr = trackedTransaction(
+            tr,
+            this.innerView.state,
+            this.editor.user,
+            !this.outerView.state.doc.firstChild.attrs.tracked && this.editor.docInfo.access_rights !== 'write-tracked',
+            Date.now() - this.editor.clientTimeAdjustment
+        )
         let {
             state,
             transactions
