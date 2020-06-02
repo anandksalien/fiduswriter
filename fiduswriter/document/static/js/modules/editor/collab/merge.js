@@ -166,6 +166,7 @@ export class Merge{
             const doc = this.trDoc(tr, index + 1)
             changes = changes.addSteps(doc, [tr.mapping.maps[index]], {step: index})
         })
+        console.log("CHANGES",changes)
         return changes
     }
 
@@ -296,20 +297,28 @@ export class Merge{
     openHelpDialog(){
         const helpDialog = new Dialog({
             id: 'editor-merge-help',
-            title: gettext("Instructions for Merge"),
+            title: gettext("Frequently Asked Questions"),
             body: mergeHelpTemplate,
             height:600,
-            width:600,
+            width:900,
             buttons:[]
         })
         helpDialog.open()
         const question_items = document.querySelectorAll('.merge-question .fa-plus-circle')
         question_items.forEach(element=>{
+                const answerEle = element.parentNode.nextSibling.nextElementSibling
+                answerEle.style.display = "none"
+        })
+        question_items.forEach(element=>{
             element.addEventListener('click',()=>{
                 const answerEle = element.parentNode.nextSibling.nextElementSibling
                 if (answerEle.style.display == ""){
+                    element.classList.remove("fa-minus-circle")
+                    element.classList.add("fa-plus-circle")
                     answerEle.style.display = "none"
                 } else if (answerEle.style.display = "none"){
+                    element.classList.remove("fa-plus-circle")
+                    element.classList.add("fa-minus-circle")
                     answerEle.style.display = ""
                 }
             })
@@ -387,7 +396,7 @@ export class Merge{
             title: gettext("Merging Offline Document"),
             body: `<div style="display:flex"><div class="offline-heading">OFFLINE DOCUMENT</div><div class="merged-heading">MERGED DOCUMENT</div> <div class="online-heading">ONLINE DOCUMENT</div></div><div class= "user-contents" style="display:flex;"><div id="editor-diff-1" style="float:left;padding:15px;"></div><div id="editor-diff" class="merged-view" style="padding:15px;"></div><div id="editor-diff-2" style="float:right;padding:15px;"></div></div><div class="help-note"> Note : If this is your first time encountering this dialog please read the instructions for merging by clicking on the Help button.</div>`,
             height:600,
-            width:1600,
+            width:window.innerwidth,
             buttons:mergeButtons
         })
         return dialog
