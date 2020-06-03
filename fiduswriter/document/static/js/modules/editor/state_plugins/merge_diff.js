@@ -85,6 +85,9 @@ export const diffPlugin = function(options) {
             diffMark = $head.marks().find(
                 mark => mark.type.name === 'DiffMark'
             )
+        const linkMark = $head.marks().find(
+            mark => mark.type.name === 'link'
+        ) 
         if (diffMark) {
             currentMarks.push(diffMark)
         }
@@ -108,7 +111,7 @@ export const diffPlugin = function(options) {
             return DecorationSet.empty
         }
         const startPos = diffMark.attrs.to
-        const dom = createDropUp(diffMark),
+        const dom = createDropUp(diffMark,linkMark),
             deco = Decoration.widget(startPos,dom)
         let highlightDecos = createHiglightDecoration(diffMark.attrs.from,diffMark.attrs.to,state)
         highlightDecos.push(deco)
@@ -197,7 +200,7 @@ export const diffPlugin = function(options) {
         window.getSelection().removeAllRanges();
     }
 
-    function createDropUp(diffMark) {
+    function createDropUp(diffMark,linkMark) {
         const dropUp = document.createElement('span'),
         editor = options.editor,requiredPx=10,
         tr = diffMark.attrs.diff.search('offline') != -1 ? editor.mod.collab.doc.merge.offlineTr : editor.mod.collab.doc.merge.onlineTr
@@ -216,7 +219,7 @@ export const diffPlugin = function(options) {
                 view = editor.mod.collab.doc.merge.mergeView2
             }
         }
-        
+        linkMark = linkMark === undefined ? false : linkMark
         dropUp.classList.add('drop-up-outer')
         dropUp.innerHTML = noSpaceTmp`
             <div class="link drop-up-inner" style="top: -${requiredPx}px;">
@@ -227,6 +230,12 @@ export const diffPlugin = function(options) {
                             diffMark.attrs.diff ?
                             `<div class="link-title">${gettext('Change')}:&nbsp; ${ (diffMark.attrs.diff.search('deleted') !=-1) ? (diffMark.attrs.diff.search('offline') !=-1 ? gettext('Deleted by you') :gettext('Deleted by Online user')):''}</div>` :
                             ''
+                        }
+                        ${
+                            linkMark ? `<div> Link : ${linkMark.attrs.href}</div>`:``
+                        }
+                        ${
+                            linkMark ? `<div> Type : ${linkMark.attrs.href[0] == "#"?`internal`:`external`}</div>`:``
                         }
                     </div>
                     <ul class="drop-up-options">

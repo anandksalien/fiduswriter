@@ -527,8 +527,7 @@ export const toolbarModel = () => ({
                     (
                         editor.currentView.state.selection.jsonID === 'node' &&
                         editor.currentView.state.selection.node.type.name !== 'citation'
-                    ) ||
-                    !editor.ws.isOnline()
+                    )
                 ) {
                     return true
                 }
