@@ -42,6 +42,7 @@ export class ModCollabDoc {
         this.awaitingDiffResponse = false
         this.receiving = false
         this.currentlyCheckingVersion = false
+        this.footnoteRender = false // If the offline user edited a footnote , it needs to be rendered properly to connected users too!
     }
 
     cancelCurrentlyCheckingVersion() {
@@ -105,7 +106,8 @@ export class ModCollabDoc {
         // Adjust the document when reconnecting after offline and many changes
         // happening on server.
         if (this.mod.editor.docInfo.version < data.doc.v) {
-            
+            this.receiving = true
+            this.mod.editor.docInfo.confirmedJson = JSON.parse(JSON.stringify(data.doc.contents))
             const confirmedState = EditorState.create({doc: this.mod.editor.docInfo.confirmedDoc})
             const unconfirmedTr = confirmedState.tr
             sendableSteps(this.mod.editor.view.state).steps.forEach(step => unconfirmedTr.step(step))
@@ -113,61 +115,43 @@ export class ModCollabDoc {
             unconfirmedTr.steps.slice().reverse().forEach(
                 (step, index) => rollbackTr.step(step.invert(unconfirmedTr.docs[unconfirmedTr.docs.length - index - 1]))
             )
-
-            console.log("Unconfirmed steps",unconfirmedTr)
-            
-            // Reset to no local changes
+            // We reset to there being no local changes to send.
             this.mod.editor.view.dispatch(receiveTransaction(
                 this.mod.editor.view.state,
                 unconfirmedTr.steps,
                 unconfirmedTr.steps.map(_step => this.mod.editor.client_id)
             ))
-
-            // Complete rollback properly
-            rollbackTr.setMeta('remote',true)
-            this.mod.editor.view.dispatch(rollbackTr)
-
-            // We reset to there being no local changes to send.
             this.mod.editor.view.dispatch(receiveTransaction(
                 this.mod.editor.view.state,
                 rollbackTr.steps,
-                rollbackTr.steps.map(_step => this.mod.editor.client_id)
-            ).setMeta('remote',true))
-            
+                rollbackTr.steps.map(_step => 'remote')
+            ).setMeta('remote', true))
             const toDoc = this.mod.editor.schema.nodeFromJSON({type:'doc', content:[
                 data.doc.contents
             ]})
-            let lostTr = recreateTransform(this.mod.editor.docInfo.confirmedDoc, toDoc)
-            
-            const conflicts = this.merge.findConflicts(unconfirmedTr,lostTr)
 
-            // Update to match the online doc.
-            const lostState = EditorState.create({doc: toDoc})
-            const lostOnlineTr = receiveTransaction(
+            // Apply the online Transaction
+            const lostTr = recreateTransform(this.mod.editor.view.state.doc, toDoc)
+            this.mod.editor.view.dispatch(receiveTransaction(
                 this.mod.editor.view.state,
                 lostTr.steps,
                 lostTr.steps.map(_step => 'remote')
-            ).setMeta('remote',true)
-            this.mod.editor.view.dispatch(lostOnlineTr)
-
-            //Update the footnote editor state
-            this.mod.editor.mod.footnotes.fnEditor.renderAllFootnotes()
+            ).setMeta('remote', true))
             
-            // Set Confirmed DOC
-            this.mod.editor.docInfo.confirmedDoc = lostState.doc
-            this.mod.editor.docInfo.confirmedJson = toMiniJSON(this.mod.editor.docInfo.confirmedDoc.firstChild)
-            
+            const conflicts = this.merge.findConflicts(unconfirmedTr,lostTr)
             // Set the version
             this.mod.editor.docInfo.version = data.doc.v
-            
+
             this.merge.diffMerge(confirmedState.doc,unconfirmedTr.doc,toDoc,unconfirmedTr,lostTr,data)
-            
             // If no conflicts arises auto-merge the document
             // if(conflicts.length>0){
             //     this.merge.diffMerge(confirmedState.doc,unconfirmedTr.doc,toDoc,unconfirmedTr,lostTr,data)
             // } else {
             //     this.merge.autoMerge(unconfirmedTr,lostTr,data)
-            // }    
+            // }   
+
+            this.receiving = false
+            // this.sendToCollaborators()
         } else {
             // The server seems to have lost some data. We reset.
             this.loadDocument(data)
@@ -188,6 +172,7 @@ export class ModCollabDoc {
         this.mod.editor.docInfo = data.doc_info
         this.mod.editor.docInfo.version = data.doc.v
         this.mod.editor.docInfo.template = data.doc.template
+        this.mod.editor.docInfo.updated = new Date()
         this.mod.editor.mod.db.bibDB.setDB(data.doc.bibliography)
         this.mod.editor.mod.db.imageDB.setDB(data.doc.images)
         this.mod.editor.docInfo.confirmedJson = JSON.parse(JSON.stringify(data.doc.contents))
@@ -346,6 +331,10 @@ export class ModCollabDoc {
                         s => s.toJSON()
                     )
                 }
+                if (this.footnoteRender) {
+                    unconfirmedDiff['footnoterender'] = true
+                    this.footnoteRender = false
+                }
                 if (commentUpdates.length) {
                     unconfirmedDiff["cu"] = commentUpdates
                 }
@@ -445,6 +434,9 @@ export class ModCollabDoc {
         }
         if (data["fs"]) { // footnote steps
             this.mod.editor.mod.footnotes.fnEditor.applyDiffs(data["fs"], data["cid"])
+        }
+        if (data["footnoterender"]) { // re-render footnotes properly
+            this.mod.editor.mod.footnotes.fnEditor.renderAllFootnotes()
         }
 
         if (data.server_fix) {

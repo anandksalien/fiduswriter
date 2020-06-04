@@ -325,7 +325,6 @@ export class Merge{
         })
     }
 
-
     createMergeDialog(offlineTr,onlineTr,onlineDoc){
         const mergeButtons = [{
             text: " Help ",
@@ -679,21 +678,24 @@ export class Merge{
     }
 
     autoMerge(unconfirmedTr,lostTr,data){
-        const rebasedTr = this.mod.editor.view.state.tr
-        let maps = new Mapping([].concat(unconfirmedTr.mapping.maps.slice().reverse().map(map=>map.invert())).concat(lostTr.mapping.maps.slice()))
-        
+        const toDoc = this.mod.editor.schema.nodeFromJSON({type:'doc', content:[
+            data.doc.contents
+        ]})
+        const rebasedTr = EditorState.create({doc: toDoc}).tr.setMeta('remote', true)
+        const maps = new Mapping([].concat(unconfirmedTr.mapping.maps.slice().reverse().map(map=>map.invert())).concat(lostTr.mapping.maps.slice()))
+
         unconfirmedTr.steps.forEach(
             (step, index) => {
                 const mapped = step.map(maps.slice(unconfirmedTr.steps.length - index))
                 if (mapped && !rebasedTr.maybeStep(mapped).failed) {
                     maps.appendMap(mapped.getMap())
-                    maps.setMirror(unconfirmedTr.steps.length-index-1,(unconfirmedTr.steps.length+lostTr.steps.length+rebasedTr.steps.length-1))
+                    maps.setMirror(unconfirmedTr.steps.length-index-1, (unconfirmedTr.steps.length+lostTr.steps.length+rebasedTr.steps.length-1))
                 }
             }
         )
-        
-        // Enable/Disable tracked changes based on some conditions
-        let rebasedTrackedTr,tracked
+
+        let tracked
+        let rebasedTrackedTr // offline steps to be tracked
         if (
             ['write', 'write-tracked'].includes(this.mod.editor.docInfo.access_rights) &&
             (
@@ -712,15 +714,13 @@ export class Merge{
                 false,
                 Date.now() - this.mod.editor.clientTimeAdjustment
             )
-            rebasedTrackedTr.setMeta('remote',true)
         } else {
             tracked = false
-            rebasedTrackedTr = rebasedTr.setMeta('remote',true)
+            rebasedTrackedTr = rebasedTr
         }
 
-
-        const usedImages = [],
-            usedBibs = []
+        let usedImages = []
+        const usedBibs = []
         const footnoteFind = (node, usedImages, usedBibs) => {
             if (node.name==='citation') {
                 node.attrs.references.forEach(ref => usedBibs.push(parseInt(ref.id)))
@@ -730,8 +730,6 @@ export class Merge{
                 node.content.forEach(subNode => footnoteFind(subNode, usedImages, usedBibs))
             }
         }
-
-        // Looking at rebased doc so that it contains the merged document !!!
         rebasedTr.doc.descendants(node => {
             if (node.type.name==='citation') {
                 node.attrs.references.forEach(ref => usedBibs.push(parseInt(ref.id)))
@@ -741,7 +739,6 @@ export class Merge{
                 node.attrs.footnote.forEach(subNode => footnoteFind(subNode, usedImages, usedBibs))
             }
         })
-        
         const oldBibDB = this.mod.editor.mod.db.bibDB.db
         this.mod.editor.mod.db.bibDB.setDB(data.doc.bibliography)
         usedBibs.forEach(id => {
@@ -751,21 +748,25 @@ export class Merge{
         })
         const oldImageDB = this.mod.editor.mod.db.imageDB.db
         this.mod.editor.mod.db.imageDB.setDB(data.doc.images)
+        // Remove the Duplicated image ID's
+        usedImages = new Set(usedImages)
+        usedImages = Array.from(usedImages)
         usedImages.forEach(id => {
             if (!this.mod.editor.mod.db.imageDB.db[id] && oldImageDB[id]) {
                 // If the image was uploaded by the offline user we know that he may not have deleted it so we can resend it normally
-                if(Object.keys(this.mod.editor.app.imageDB.db).includes(id)){
+                if (Object.keys(this.mod.editor.app.imageDB.db).includes(id)) {
                     this.mod.editor.mod.db.imageDB.setImage(id, oldImageDB[id])
                 } else {
                     // If the image was uploaded by someone else , to set the image we have to reupload it again as there is backend check to associate who can add an image with the image owner.
-                    this.mod.editor.mod.db.imageDB.reUploadImage(id,oldImageDB[id].image,oldImageDB[id].title,oldImageDB[id].copyright)
-
+                    this.mod.editor.mod.db.imageDB.reUploadImage(id, oldImageDB[id].image, oldImageDB[id].title, oldImageDB[id].copyright)
                 }
             }
         })
 
+        // this.mod.editor.docInfo.version = data.doc.v
+        rebasedTrackedTr.setMeta('remote', true)
         this.mod.editor.view.dispatch(rebasedTrackedTr)
-        
+
         if (tracked) {
             showSystemMessage(
                 gettext(
@@ -774,6 +775,7 @@ export class Merge{
             )
         }
         this.mod.editor.mod.footnotes.fnEditor.renderAllFootnotes()
+        
     }
 
 }

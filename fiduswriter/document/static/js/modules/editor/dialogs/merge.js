@@ -30,7 +30,7 @@ export const mergeHelpTemplate = `
             <div>
                 <div class="merge-question"><i class="fas fa-plus-circle"></i>How do I accept or reject a particular change ?</div>
                 <div class= "merge-answer">Accepting or rejecting a change from editors , causes a change in the editor in the middle. You can accept a change by directly clicking on the highlighted text , which shows up a drop , where in you can either accept / reject a change. When you click on the highlighted text , it also highlights the changes that will get accepted.
-                <img src="${settings.STATIC_URL}img/accept-change.png" class = "merge-img">
+                <img src="${settings_STATIC_URL}img/accept-change.png" class = "merge-img">
                 As shown in the above image one can click on a highlighted change , and click on accept change. On accepting a change it'll be reflected in the merged document editor in the middle. Rejecting a change works in the same way except on reject a change the highlight of the change will be lost , with it the ability to accept, reject or copy a change.
                 </div>
             </div>

@@ -3,7 +3,8 @@ import {
     ensureCSS,
     WebSocketConnector,
     postJson,
-    activateWait
+    activateWait,
+    Dialog
 } from "../common"
 import {
     FeedbackTab
@@ -113,6 +114,9 @@ import {
 import {
     buildEditorKeymap
 } from "./keymap"
+import {
+    ExportFidusFile
+} from "../exporter/native/file"
 
 export const COMMENT_ONLY_ROLES = ['review', 'comment']
 export const READ_ONLY_ROLES = ['read', 'read-without-comments']
@@ -136,6 +140,7 @@ export class Editor {
             owner: undefined,
             is_owner: false,
             confirmedDoc: false, // The latest doc as confirmed by the server.
+            updated: false, // Latest update time stamp
             dir: 'ltr' // standard direction, used in input fields, etc.
         }
         let id = parseInt(idString)
@@ -254,6 +259,9 @@ export class Editor {
                     return message
                 },
                 resubScribed: () => {
+                    if (sendableSteps(this.mod.footnotes.fnEditor.view.state)) {
+                        this.mod.collab.doc.footnoteRender = true
+                    }
                     this.mod.footnotes.fnEditor.renderAllFootnotes()
                     this.mod.collab.doc.checkVersion()
                 },
@@ -313,8 +321,28 @@ export class Editor {
                             this.mod.collab.doc.rejectDiff(data["rid"])
                             break
                     }
+                },
+                failedAuth: () => {
+                    this.ws.online = false // To avoid Websocket trying to reconnect.
+                    new ExportFidusFile(
+                        this.getDoc(),
+                        this.mod.db.bibDB,
+                        this.mod.db.imageDB
+                    )
+                    const sessionDialog = new Dialog({
+                        title:gettext('Session Expired'),
+                        body:gettext(' Your Session expired while you were offline. So we have downloaded the version of the document you were editing. Please consider importing it into a new document '),
+                        buttons:[{
+                            text:gettext('Proceed to Login page'),
+                            classes:'fw-dark',
+                            click:()=>{
+                                window.location.href='/'
+                            }
+                        }]
+                    })
+                    sessionDialog.open()
+                    sessionDialog.dialogEl.childNodes[1].childNodes[3].style.display = 'none' // Make the dialog non dismissable
                 }
-
             })
             this.render()
             activateWait(true)
@@ -376,7 +404,7 @@ export class Editor {
                 <div id="chat-container"></div>
                 <div id="messageform" contentEditable="true" class="empty"></div>
                 <audio id="chat-notification">
-                    <source src="${settings.STATIC_URL}ogg/chat_notification.ogg?v=${transpile.VERSION}" type="audio/ogg">
+                    <source src="${settings_STATIC_URL}ogg/chat_notification.ogg?v=${transpile_VERSION}" type="audio/ogg">
                 </audio>
             </div>
         </div>
@@ -423,6 +451,9 @@ export class Editor {
                         this.mod.footnotes.fnEditor.view.dispatch(footTr)
                     }
                 })
+                if (tr.steps) {
+                    this.docInfo.updated = new Date()
+                }
 
                 this.mod.collab.doc.sendToCollaborators()
             }
@@ -484,7 +515,8 @@ export class Editor {
             title: title.substring(0, 255),
             version: this.docInfo.version,
             comments: this.mod.comments.store.comments,
-            id: this.docInfo.id
+            id: this.docInfo.id,
+            updated: this.docInfo.updated
         }
     }
 
@@ -537,7 +569,7 @@ export class Editor {
         view.dispatch(view.state.tr.setSelection(new TextSelection($pos, $pos)))
         view.focus()
         const distanceFromTop = view.coordsAtPos(pos).top - topMenuHeight
-        window.scrollBy(0, distanceFromTop)
+        window.scrollBy({left: 0, top: distanceFromTop, behavior:"smooth", block:"center"})
         return
     }
 

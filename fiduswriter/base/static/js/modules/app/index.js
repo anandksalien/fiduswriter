@@ -1,5 +1,5 @@
 import {CSL} from 'citeproc-plus'
-import OfflinePluginRuntime from 'offline-plugin/runtime' //eslint-disable-line
+import OfflinePluginRuntime from 'offline-plugin/runtime'
 import {DocumentInvite} from "../documents/invite"
 import {ImageOverview} from "../images/overview"
 import {ContactsOverview} from "../contacts"
@@ -107,10 +107,11 @@ export class App {
     }
 
     init() {
-        if (!settings.DEBUG) {
-            if ('serviceWorker' in navigator) {
-                navigator.serviceWorker.register('/sw2.js')
-            }
+        if (!settings_DEBUG) {
+            OfflinePluginRuntime.install({
+                onUpdateReady: () => OfflinePluginRuntime.applyUpdate(),
+                onUpdated: () => window.location.reload()
+            })
         }
         ensureCSS([
             'fontawesome/css/all.css'
@@ -129,7 +130,7 @@ export class App {
                         // We show a setup message instead.
                         this.page = this.openSetupPage()
                         this.page.init()
-                    } else if (settings.DEBUG) {
+                    } else if (settings_DEBUG) {
                         throw error
                     } else {
                         // We don't know what is going on, but we are in production
