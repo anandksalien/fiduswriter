@@ -409,8 +409,6 @@ export class Merge{
                 (node, pos) => {
                     if (['bullet_list', 'ordered_list'].includes(node.type.name)) {
                         return true
-                    } else if (['table_row', 'table_cell'].includes(node.type.name)) {
-                        return false
                     } else if (node.isInline){
                         let diffMark = node.marks.find(mark=>mark.type.name=="DiffMark")
                         if(diffMark!== undefined){
@@ -425,9 +423,6 @@ export class Merge{
                         diffdata[0].from = tr.mapping.map(diffdata[0].from)
                         diffdata[0].to = tr.mapping.map(diffdata[0].to)
                         tr.setNodeMarkup(pos, null, Object.assign({}, node.attrs, {diffdata}), node.marks)
-                    }
-                    if (node.type.name==='table') {
-                        return false
                     }
                 }
             )
