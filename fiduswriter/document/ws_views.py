@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 class WebSocket(BaseWebSocketHandler):
     sessions = dict()
-    history_length = 1000  # Only keep the last 1000 diffs
+    history_length = 1  # Only keep the last 1000 diffs
 
     def open(self, arg):
         super().open(arg)
