@@ -94,7 +94,7 @@ export class Merge{
             [history],
             [dropCursor],
             [gapCursor],
-            [tableEditing],
+            // [tableEditing],
             [jumpHiddenNodesPlugin],
             [searchPlugin],
             [clipboardPlugin, () => ({editor: this.mod.editor, viewType: 'main'})]
@@ -278,17 +278,14 @@ export class Merge{
             (node, pos) => {
                 if (pos < from || ['bullet_list', 'ordered_list'].includes(node.type.name)) {
                     return true
-                } else if (node.isInline || ['table_row', 'table_cell'].includes(node.type.name)) {
+                }
+                else if (node.isInline) {
                     return false
                 }
                 if (node.attrs.diffdata) {
                     const diffdata = []
                     diffdata.push({type : difftype , from:from ,to:to , steps:steps_involved})
                     tr.setNodeMarkup(pos, null, Object.assign({}, node.attrs, {diffdata}), node.marks)
-                }
-                if (node.type.name==='table') {
-                    // A table was inserted. We don't add track marks to elements inside of it.
-                    return false
                 }
             }
         )
@@ -520,7 +517,7 @@ export class Merge{
                 tr.steps.forEach((step,index)=>{
                     if(step.from >= change.fromB && step.to<=change.toB && step instanceof ReplaceStep && !steps_involved.includes(index)){
                         const Step1 = step.toJSON()
-                        if(Step1.slice && Step1.slice.content.length == 1 && Step1.slice.content[0].type === "footnote"){
+                        if(Step1.slice && Step1.slice.content.length == 1 && (Step1.slice.content[0].type === "footnote" ||Step1.slice.content[0].type === "citation" )){
                             steps_involved.push(index)
                         }
                     } else if (step.from >= change.fromB && step.to<=change.toB && step instanceof AddMarkStep && !steps_involved.includes(index)){
@@ -577,8 +574,6 @@ export class Merge{
                             insertionMarksTr.doc.nodesBetween(from,to,(node,pos)=>{
                                 if (['bullet_list', 'ordered_list'].includes(node.type.name)) {
                                     return true
-                                } else if (['table_row', 'table_cell'].includes(node.type.name)) {
-                                    return false
                                 } else if (node.isInline){
                                     let diffMark = node.marks.find(mark=>mark.type.name=="DiffMark")
                                     if(diffMark!== undefined){
@@ -589,9 +584,6 @@ export class Merge{
                                 if (node.attrs.diffdata && node.attrs.diffdata.length>0) {
                                     const diffdata = JSON.parse(node.attrs.diffdata)
                                     steps = steps.concat(diffdata[0].steps)
-                                }
-                                if (node.type.name==='table') {
-                                    return false
                                 }
                             })
                             const stepsSet = new Set(steps)
@@ -670,6 +662,8 @@ export class Merge{
 
         this.offStepsNotTracked = this.findNotTrackedSteps(offlineTr,offlineTrackedSteps)
         this.onStepsNotTracked = this.findNotTrackedSteps(onlineTr,onlineTrackedSteps)
+        console.log("OFFLINE NOT TR",this.offStepsNotTracked)
+        console.log("ONLINE NOT TR",this.onStepsNotTracked)
     }
 
     diffMerge(cpDoc,offlineDoc,onlineDoc,offlineTr,onlineTr,data){
