@@ -13,16 +13,12 @@ export const removeMarks = function(view,from,to,mark){
             (node, pos) => {
                 if (pos < from || ['bullet_list', 'ordered_list'].includes(node.type.name)) {
                     return true
-                } else if (node.isInline || ['table_row', 'table_cell'].includes(node.type.name)) {
+                } else if (node.isInline) {
                     return false
                 }
                 if (node.attrs.diffdata && node.attrs.diffdata.length>0) {
                     const diffdata = []
                     trackedTr.setNodeMarkup(pos, null, Object.assign({}, node.attrs, {diffdata}), node.marks)
-                }
-                if (node.type.name==='table') {
-                    // A table was inserted. We don't add track marks to elements inside of it.
-                    return false
                 }
             }
         )
@@ -64,15 +60,11 @@ export const diffPlugin = function(options) {
             (node, pos) => {
                 if (pos < from || ['bullet_list', 'ordered_list'].includes(node.type.name)) {
                     return true
-                } else if (node.isInline || ['table_row', 'table_cell'].includes(node.type.name)) {
+                } else if (node.isInline) {
                     return false
                 }
                 if (node && node.attrs.diffdata && node.attrs.diffdata.length>0) {
                     deco.push(Decoration.node(pos,pos+node.nodeSize,{class:'selected-dec'},{}))
-                }
-                if (node.type.name==='table') {
-                    // A table was inserted. We don't add track marks to elements inside of it.
-                    return false
                 }
             }
         )
