@@ -322,6 +322,94 @@ export class Merge{
         })
     }
 
+    startMerge(offlineTr,onlineTr,onlineDoc){
+        // Remove all diff related marks
+        removeMarks(this.mergeView2,0,this.mergeView2.state.doc.content.size ,this.mod.editor.schema.marks.DiffMark )
+
+        // Apply all the marks that are not handled by recreate steps!
+        const markTr = this.mergeView2.state.tr
+        const onlineMaps = onlineTr.mapping.maps.slice().reverse().map(map=>map.invert())
+        const onlineRebaseMapping = new Mapping(onlineMaps)
+        onlineRebaseMapping.appendMapping(this.mergedDocMap)
+        this.onStepsNotTracked.forEach(markstep=>{
+            const stepIndex = parseInt(onlineTr.steps.indexOf(markstep))
+            const onlineRebaseMap = onlineRebaseMapping.slice(onlineTr.steps.length-stepIndex)
+            const mappedMarkStep = markstep.map(onlineRebaseMap)
+            if(mappedMarkStep && !markTr.maybeStep(mappedMarkStep).failed){
+                this.mergedDocMap.appendMap(mappedMarkStep.getMap())
+                onlineRebaseMapping.appendMap(mappedMarkStep.getMap())
+                onlineRebaseMapping.setMirror(onlineTr.steps.length-stepIndex-1,(onlineTr.steps.length+this.mergedDocMap.maps.length-1))    
+            }
+        })
+        const offlineRebaseMapping = new Mapping()
+        offlineRebaseMapping.appendMappingInverted(offlineTr.mapping)
+        offlineRebaseMapping.appendMapping(this.mergedDocMap)
+        this.offStepsNotTracked.forEach(markstep=>{
+            const stepIndex = offlineTr.steps.indexOf(markstep)
+            const offlineRebaseMap = offlineRebaseMapping.slice(offlineTr.steps.length-stepIndex)
+            const mappedMarkStep = markstep.map(offlineRebaseMap)
+            if(mappedMarkStep && !markTr.maybeStep(mappedMarkStep).failed){
+                this.mergedDocMap.appendMap(mappedMarkStep.getMap())
+                offlineRebaseMapping.appendMap(mappedMarkStep.getMap())
+                offlineRebaseMapping.setMirror(offlineTr.steps.length-stepIndex-1,(offlineTr.steps.length+this.mergedDocMap.maps.length-1))    
+            } 
+        })
+        this.mergeView2.dispatch(markTr)
+        
+        
+        this.mergeDialog.close()
+        const mergedDoc = this.mergeView2.state.doc
+        //CleanUp
+        this.mergeView1.destroy()
+        this.mergeView2.destroy()
+        this.mergeView3.destroy()
+        this.mergeView1 = false
+        this.mergeView2 = false
+        this.mergeView3 = false
+        this.mergedDocMap = false
+        this.mergeDialog = false
+        this.offlineMarkSteps = false
+        this.onlineMarkSteps = false
+        this.Dep = false
+        this.offStepsNotTracked = false
+        this.onStepsNotTracked = false
+
+        this.applyChangesToEditor(recreateTransform(onlineDoc,mergedDoc),onlineDoc)
+
+    }
+
+    checkResolution(){
+        const offlineVersionDoc = this.mergeView1.state.doc,
+        onlineVersionDoc = this.mergeView3.state.doc,
+        mergedVersionDoc = this.mergeView2.state.doc
+        let diffAttrPresent = false
+        if( offlineVersionDoc.rangeHasMark(0,offlineVersionDoc.content.size,this.mod.editor.schema.marks.DiffMark) ||
+            onlineVersionDoc.rangeHasMark(0,onlineVersionDoc.content.size,this.mod.editor.schema.marks.DiffMark) ||
+            mergedVersionDoc.rangeHasMark(0,mergedVersionDoc.content.size,this.mod.editor.schema.marks.DiffMark)
+        ){
+            return true
+        } 
+        offlineVersionDoc.nodesBetween(0,offlineVersionDoc.content.size,(node,pos)=>{
+            if(node.attrs.diffdata && node.attrs.diffdata.length>0){
+                diffAttrPresent = true
+            }
+        })
+        onlineVersionDoc.nodesBetween(0,onlineVersionDoc.content.size,(node,pos)=>{
+            if(node.attrs.diffdata && node.attrs.diffdata.length>0){
+                diffAttrPresent = true
+            }
+        })
+        mergedVersionDoc.nodesBetween(0,mergedVersionDoc.content.size,(node,pos)=>{
+            if(node.attrs.diffdata && node.attrs.diffdata.length>0){
+                diffAttrPresent = true
+            }
+        })
+        if(diffAttrPresent){
+            return true
+        }
+        return false
+    }
+
     createMergeDialog(offlineTr,onlineTr,onlineDoc){
         const mergeButtons = [{
             text: " Help ",
@@ -333,58 +421,25 @@ export class Merge{
             text: "Merge Complete",
             classes: 'fw-dark',
             click: () => {
-                // Remove all diff related marks
-                removeMarks( this.mergeView2,0,this.mergeView2.state.doc.content.size ,this.mod.editor.schema.marks.DiffMark )
-
-                // Apply all the marks that are not handled by recreate steps!
-                const markTr = this.mergeView2.state.tr
-                const onlineMaps = onlineTr.mapping.maps.slice().reverse().map(map=>map.invert())
-                const onlineRebaseMapping = new Mapping(onlineMaps)
-                onlineRebaseMapping.appendMapping(this.mergedDocMap)
-                this.onStepsNotTracked.forEach(markstep=>{
-                    const stepIndex = parseInt(onlineTr.steps.indexOf(markstep))
-                    const onlineRebaseMap = onlineRebaseMapping.slice(onlineTr.steps.length-stepIndex)
-                    const mappedMarkStep = markstep.map(onlineRebaseMap)
-                    if(mappedMarkStep && !markTr.maybeStep(mappedMarkStep).failed){
-                        this.mergedDocMap.appendMap(mappedMarkStep.getMap())
-                        onlineRebaseMapping.appendMap(mappedMarkStep.getMap())
-                        onlineRebaseMapping.setMirror(onlineTr.steps.length-stepIndex-1,(onlineTr.steps.length+this.mergedDocMap.maps.length-1))    
-                    }
-                })
-                const offlineRebaseMapping = new Mapping()
-                offlineRebaseMapping.appendMappingInverted(offlineTr.mapping)
-                offlineRebaseMapping.appendMapping(this.mergedDocMap)
-                this.offStepsNotTracked.forEach(markstep=>{
-                    const stepIndex = offlineTr.steps.indexOf(markstep)
-                    const offlineRebaseMap = offlineRebaseMapping.slice(offlineTr.steps.length-stepIndex)
-                    const mappedMarkStep = markstep.map(offlineRebaseMap)
-                    if(mappedMarkStep && !markTr.maybeStep(mappedMarkStep).failed){
-                        this.mergedDocMap.appendMap(mappedMarkStep.getMap())
-                        offlineRebaseMapping.appendMap(mappedMarkStep.getMap())
-                        offlineRebaseMapping.setMirror(offlineTr.steps.length-stepIndex-1,(offlineTr.steps.length+this.mergedDocMap.maps.length-1))    
-                    } 
-                })
-                this.mergeView2.dispatch(markTr)
+                if(!this.checkResolution()){
+                    this.startMerge(offlineTr,onlineTr,onlineDoc)
+                } else {
+                    const warningDialog = new Dialog({
+                        id: 'merge-res-warning',
+                        title: gettext("Merge Resolution warning"),
+                        body: gettext("Not all changes have been resolved. Please make sure to review all the changes to before proceeding."),
+                        buttons:[{
+                            text: "Proceed to Merge",
+                            classes: 'fw-dark',
+                            click:()=>{
+                                this.startMerge(offlineTr,onlineTr,onlineDoc)
+                            }
+                        }]
+                    }) 
+                    warningDialog.open()
+                    
+                }
                 
-                
-                this.mergeDialog.close()
-                const mergedDoc = this.mergeView2.state.doc
-                //CleanUp
-                this.mergeView1.destroy()
-                this.mergeView2.destroy()
-                this.mergeView3.destroy()
-                this.mergeView1 = false
-                this.mergeView2 = false
-                this.mergeView3 = false
-                this.mergedDocMap = false
-                this.mergeDialog = false
-                this.offlineMarkSteps = false
-                this.onlineMarkSteps = false
-                this.Dep = false
-                this.offStepsNotTracked = false
-                this.onStepsNotTracked = false
-    
-                this.applyChangesToEditor(recreateTransform(onlineDoc,mergedDoc),onlineDoc)
             }
         }]
         const dialog = new Dialog({
