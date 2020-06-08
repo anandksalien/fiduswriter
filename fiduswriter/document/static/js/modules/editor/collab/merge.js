@@ -433,6 +433,7 @@ export class Merge{
                             classes: 'fw-dark',
                             click:()=>{
                                 this.startMerge(offlineTr,onlineTr,onlineDoc)
+                                warningDialog.close()
                             }
                         }]
                     }) 
@@ -609,6 +610,14 @@ export class Merge{
                 } else if(Step1.slice && Step1.slice.content.length == 1 && Step1.slice.content[0].type === "citation"){
                     const insertionMark = this.mod.editor.schema.marks.DiffMark.create({diff:insertionClass,steps:JSON.stringify([index]),from:from,to:to})
                     insertionMarksTr.addMark(from,to,insertionMark)
+                    stepsTrackedByChangeset.push(index)
+                }
+                else if (Step1.slice && Step1.slice.content.length == 1 && Step1.slice.content[0].type === "figure"){
+                    if(Step1.from == Step1.to){
+                        this.markImageDiffs(insertionMarksTr,Step1.from,Step1.to+1,insertionClass,[index])
+                    } else {
+                        this.markImageDiffs(insertionMarksTr,Step1.from,Step1.to,insertionClass,[index])
+                    }
                     stepsTrackedByChangeset.push(index)
                 }
             } 

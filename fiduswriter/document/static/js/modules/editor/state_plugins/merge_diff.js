@@ -1,6 +1,6 @@
 import {Plugin, PluginKey , TextSelection, NodeSelection} from "prosemirror-state"
 import {Decoration, DecorationSet , __serializeForClipboard} from "prosemirror-view"
-import {noSpaceTmp, addAlert} from "../../common"
+import {noSpaceTmp, showSystemMessage} from "../../common"
 import { Mapping } from "prosemirror-transform"
 
 const key = new PluginKey('mergeDiff')
@@ -131,7 +131,7 @@ export const diffPlugin = function(options) {
             }
             // Make sure that all the content steps are present in the new transaction
             if(insertionTr.steps.length < steps.length){
-                addAlert('warning',gettext("The change could not be applied automatically.Please consider using the copy option to copy the changes."))
+                showSystemMessage(gettext("The change could not be applied automatically.Please consider using the copy option to copy the changes."))
             } else {
                 const markDependency = editor.mod.collab.doc.merge.Dep
                 steps.forEach(stepIndex=>{
@@ -155,7 +155,7 @@ export const diffPlugin = function(options) {
                 removeMarks(originalView,from,to,editor.schema.marks.DiffMark)
             }
         } catch(exc){
-            addAlert('warning',gettext("The change could not be applied automatically.Please consider using the copy option to copy the changes."))
+            showSystemMessage(gettext("The change could not be applied automatically.Please consider using the copy option to copy the changes."))
         }
     }
 
@@ -183,9 +183,9 @@ export const diffPlugin = function(options) {
         try {
             document.execCommand("copy") // Security exception may be thrown by some browsers.
             document.body.removeChild(dom)
-            addAlert('info', gettext('Change copied to clipboard'))
+            showSystemMessage(gettext('Change copied to clipboard'))
         } catch (ex) {
-            addAlert('info', gettext(
+            showSystemMessage(gettext(
                 'Copy to clipboard failed. Please copy manually.'
             ))
         }
