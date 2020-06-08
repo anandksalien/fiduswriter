@@ -648,7 +648,8 @@ export class Merge{
                             steps = Array.from(stepsSet)
                             this.Dep[trType][index] = steps
                         } else {
-                            insertionMarksTr.addMark(from,to,insertionMark)
+                            if(Step1.mark.type !== "insertion")
+                                insertionMarksTr.addMark(from,to,insertionMark)
                         }
                     } else if (step instanceof RemoveMarkStep && Step1.mark.type !== "insertion") {
                         const deletionMark = this.mod.editor.schema.marks.DiffMark.create({diff:deletionClass,steps:JSON.stringify([index]),from:from,to:to})

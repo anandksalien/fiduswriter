@@ -110,6 +110,27 @@ export const diffPlugin = function(options) {
         return DecorationSet.create(state.doc,highlightDecos)
     }
 
+    function fragmentMarks(fragment,toDoc,tr,offset){
+        fragment.descendants((tNode, tPos) => {
+            if (!tNode.isInline) {
+                return true
+            }
+            const pos = tPos+offset
+            toDoc.nodesBetween(pos, pos + tNode.nodeSize, (fNode, fPos) => {
+                if (!fNode.isInline) {
+                    return true
+                }
+                const from = Math.max(pos, fPos),
+                    to = Math.min(pos + tNode.nodeSize, fPos + fNode.nodeSize)
+                fNode.marks.forEach(nodeMark => {
+                    if (!nodeMark.isInSet(tNode.marks)) {
+                        tr.addMark(from, to, nodeMark)
+                    }
+                })
+            })
+        })
+    }
+
     function acceptChanges(mark,editor,mergeView,originalView,tr,trType){
         try {
             const mergedDocMap = editor.mod.collab.doc.merge.mergedDocMap
@@ -124,6 +145,8 @@ export const diffPlugin = function(options) {
                 const maps = rebasedMapping.slice(tr.steps.length-stepIndex)
                 const mappedStep = tr.steps[stepIndex].map(maps)
                 if(mappedStep && !insertionTr.maybeStep(mappedStep).failed){
+                    if(mappedStep.slice && mappedStep.slice.content)
+                        fragmentMarks(mappedStep.slice.content,tr.doc,insertionTr,mappedStep.from)
                     mergedDocMap.appendMap(mappedStep.getMap())
                     rebasedMapping.appendMap(mappedStep.getMap())
                     rebasedMapping.setMirror(tr.steps.length-stepIndex-1,(tr.steps.length+mergedDocMap.maps.length-1))
