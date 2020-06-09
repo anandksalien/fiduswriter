@@ -70,7 +70,7 @@ footnote::after {
     min-width:250px;
     z-index:100;
 }
-.footnote-tooltip::before {
+.footnote-tooltip.render-arrow::before {
     border: 5px solid silver;
     border-top-width: 0px;
     border-left-color: transparent;

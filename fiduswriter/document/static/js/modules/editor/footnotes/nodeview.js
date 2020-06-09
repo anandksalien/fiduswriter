@@ -40,6 +40,12 @@ export class FootnoteView {
         // Append a tooltip to the outer node
         let tooltip = this.dom.appendChild(document.createElement("div"))
         tooltip.className = "footnote-tooltip"
+        const diffMark = this.node.marks.find(mark => mark.type.name === 'DiffMark')
+        if(diffMark === undefined) {
+            tooltip.classList.add('render-arrow')
+        } else {
+            tooltip.style.top = '-30px';
+        }
 
         const doc = fnSchema.nodeFromJSON({
             type: "doc",

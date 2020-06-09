@@ -72,6 +72,7 @@ import {
 import {
     mergeHelpTemplate
 } from "../dialogs/merge"
+import { Slice } from "prosemirror-model"
 
 export class Merge{
     constructor(mod){
@@ -91,7 +92,7 @@ export class Merge{
             [keymap, () => buildKeymap(this.mod.editor.schema)],
             [keymap, () => baseKeymap],
             [collab, () => ({clientID: this.mod.editor.client_id})],
-            [history],
+            // [history],
             [dropCursor],
             [gapCursor],
             // [tableEditing],
@@ -469,7 +470,7 @@ export class Merge{
                         if(diffMark!== undefined){
                             diffMark = JSON.parse(JSON.stringify(diffMark.attrs))
                             tr.removeMark(pos,pos+node.nodeSize,this.mod.editor.schema.marks.DiffMark)
-                            const mark = this.mod.editor.schema.marks.DiffMark.create({diff:diffMark.diff,steps:diffMark.steps,from:tr.mapping.map(diffMark.from),to:tr.mapping.map(diffMark.to)})
+                            const mark = this.mod.editor.schema.marks.DiffMark.create({diff:diffMark.diff,steps:diffMark.steps,from:tr.mapping.map(diffMark.from),to:tr.mapping.map(diffMark.to,-1)})
                             tr.addMark(pos,pos+node.nodeSize,mark)
                         }
                     }
@@ -683,9 +684,36 @@ export class Merge{
         citRenderer.init()
     }
 
+    modifyTr(tr){
+        const trState = EditorState.create({doc: tr.docs[0]})
+        const newTr = trState.tr
+
+        tr.steps.forEach((step,index)=>{
+            if(step instanceof ReplaceStep && step.from !== step.to){
+                const modifiedStep = step.slice.size ? new ReplaceStep(
+                    step.to, // We insert all the same steps, but with "from"/"to" both set to "to" in order not to delete content. Mapped as needed.
+                    step.to,
+                    step.slice,
+                    step.structure
+                ):false
+                if(modifiedStep){
+                    newTr.step(modifiedStep)
+                    newTr.step(new ReplaceStep(step.from,step.to,Slice.empty,step.structure))
+                } else {
+                    newTr.step(step)
+                }
+
+            } else {
+                newTr.step(step)
+            }
+        })
+        return newTr
+    }
+
     openDiffEditors(cpDoc,offlineDoc,onlineDoc,offlineTr,onlineTr){
         this.mergeDialog  = this.createMergeDialog(offlineTr,onlineTr,onlineDoc)
         this.mergeDialog.open()
+        onlineTr = this.modifyTr(onlineTr)
         this.offlineTr = offlineTr
         this.onlineTr = onlineTr
         this.Dep = {}
