@@ -394,7 +394,6 @@ export function trackedTransaction(tr, state, user, approved, date) {
         newTr.scrollIntoView()
     }
 
-    console.log("Asdasdas",newTr)
     return newTr
 
 }
