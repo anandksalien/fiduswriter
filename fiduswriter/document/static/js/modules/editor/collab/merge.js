@@ -697,8 +697,13 @@ export class Merge{
                     step.structure
                 ):false
                 if(modifiedStep){
-                    newTr.step(modifiedStep)
-                    newTr.step(new ReplaceStep(step.from,step.to,Slice.empty,step.structure))
+                    // If while breaking down any step the step fails , we return the original tr (we just split steps containing both insertions and deletions into simple steps which does just insertion/deletion. should not make a big difference.)
+                    if(newTr.maybeStep(modifiedStep).failed){
+                        return tr
+                    }
+                    if(newTr.maybeStep(new ReplaceStep(step.from,step.to,Slice.empty,step.structure)).failed){
+                        return tr
+                    }
                 } else {
                     newTr.step(step)
                 }
@@ -708,6 +713,44 @@ export class Merge{
             }
         })
         return newTr
+    }
+
+    unHideSections(){
+        let offset = 1,attrs
+        const offlineTr = this.mergeView1.state.tr
+        this.mergeView1.state.doc.firstChild.forEach((child, docNodeOffset, index) => {
+            if (child.attrs.optional) {
+                offset += docNodeOffset
+                attrs = Object.assign({}, child.attrs)
+                attrs.hidden = false
+                console.log(offlineTr.doc.nodeAt(offset))
+                offlineTr.setNodeMarkup(offset, false, attrs).setMeta('settings', true)
+                offset = 1
+            }
+        })
+        const commonDocTr = this.mergeView2.state.tr
+        this.mergeView2.state.doc.firstChild.forEach((child, docNodeOffset, index) => {
+            if (child.attrs.optional) {
+                offset += docNodeOffset
+                attrs = Object.assign({}, child.attrs)
+                attrs.hidden = false
+                commonDocTr.setNodeMarkup(offset, false, attrs).setMeta('settings', true)
+                offset = 1
+            }
+        })
+        const onlineTr = this.mergeView3.state.tr
+        this.mergeView3.state.doc.firstChild.forEach((child, docNodeOffset, index) => {
+            if (child.attrs.optional) {
+                offset += docNodeOffset
+                attrs = Object.assign({}, child.attrs)
+                attrs.hidden = false
+                onlineTr.setNodeMarkup(offset, false, attrs).setMeta('settings', true)
+                offset = 1
+            }
+        })
+        this.mergeView1.dispatch(offlineTr)
+        this.mergeView2.dispatch(commonDocTr)
+        this.mergeView3.dispatch(onlineTr)
     }
 
     openDiffEditors(cpDoc,offlineDoc,onlineDoc,offlineTr,onlineTr){
@@ -730,6 +773,8 @@ export class Merge{
         
         const offlineChangeset = this.changeSet(offlineTr)
         const onlineChangeset = this.changeSet(onlineTr)
+
+        this.unHideSections()
 
         const offlineTrackedSteps = this.markChangesinDiffEditor(offlineChangeset,this.mergeView1,this.mergeView2,"offline-inserted","offline-deleted",offlineTr,"offline")
         const onlineTrackedSteps = this.markChangesinDiffEditor(onlineChangeset,this.mergeView3,this.mergeView2,"online-inserted","online-deleted",onlineTr,"online")
