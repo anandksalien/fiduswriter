@@ -17,6 +17,8 @@ import {
 import {
     showSystemMessage,
     Dialog,
+    activateWait,
+    deactivateWait
 } from "../../common"
 import {
     recreateTransform
@@ -468,9 +470,11 @@ export class Merge{
                     } else if (node.isInline){
                         let diffMark = node.marks.find(mark=>mark.type.name=="DiffMark")
                         if(diffMark!== undefined){
-                            diffMark = JSON.parse(JSON.stringify(diffMark.attrs))
-                            tr.removeMark(pos,pos+node.nodeSize,this.mod.editor.schema.marks.DiffMark)
-                            const mark = this.mod.editor.schema.marks.DiffMark.create({diff:diffMark.diff,steps:diffMark.steps,from:tr.mapping.map(diffMark.from),to:tr.mapping.map(diffMark.to,-1)})
+                            diffMark = diffMark.attrs
+                            tr.removeMark(pos,pos+node.nodeSize,tr.doc.type.schema.marks.DiffMark)
+                            const from = tr.mapping.map(diffMark.from)
+                            const to = tr.mapping.map(diffMark.to,-1)
+                            const mark = tr.doc.type.schema.marks.DiffMark.create({ diff:diffMark.diff,steps:diffMark.steps,from:from,to:to })
                             tr.addMark(pos,pos+node.nodeSize,mark)
                         }
                     }
@@ -624,35 +628,12 @@ export class Merge{
             } 
             else if ((step instanceof AddMarkStep || step instanceof RemoveMarkStep ) && !stepsTrackedByChangeset.includes(index)){
                 const Step1 = step.toJSON()
-                if(Step1.mark && ["strong","em","underline","link","deletion","insertion"].includes(Step1.mark.type)){
+                if(Step1.mark && ["strong","em","underline","link","deletion","comment"].includes(Step1.mark.type)){
                     if(step instanceof AddMarkStep){
                         const insertionMark = this.mod.editor.schema.marks.DiffMark.create({diff:insertionClass,steps:JSON.stringify([index]),from:from,to:to})
                         stepsTrackedByChangeset.push(index)
-                        if(insertionMarksTr.doc.rangeHasMark(from,to,insertionMark.type)){
-                            let steps = []
-                            insertionMarksTr.doc.nodesBetween(from,to,(node,pos)=>{
-                                if (['bullet_list', 'ordered_list'].includes(node.type.name)) {
-                                    return true
-                                } else if (node.isInline){
-                                    let diffMark = node.marks.find(mark=>mark.type.name=="DiffMark")
-                                    if(diffMark!== undefined){
-                                        diffMark = JSON.parse(JSON.stringify(diffMark.attrs))
-                                        steps = steps.concat(JSON.parse(diffMark.steps))
-                                    }
-                                }
-                                if (node.attrs.diffdata && node.attrs.diffdata.length>0) {
-                                    const diffdata = JSON.parse(node.attrs.diffdata)
-                                    steps = steps.concat(diffdata[0].steps)
-                                }
-                            })
-                            const stepsSet = new Set(steps)
-                            steps = Array.from(stepsSet)
-                            this.Dep[trType][index] = steps
-                        } else {
-                            if(Step1.mark.type !== "insertion")
-                                insertionMarksTr.addMark(from,to,insertionMark)
-                        }
-                    } else if (step instanceof RemoveMarkStep && Step1.mark.type !== "insertion") {
+                        insertionMarksTr.addMark(from,to,insertionMark)
+                    } else if (step instanceof RemoveMarkStep) {
                         const deletionMark = this.mod.editor.schema.marks.DiffMark.create({diff:deletionClass,steps:JSON.stringify([index]),from:from,to:to})
                         deletionMarksTr.addMark(from,to,deletionMark)
                         stepsTrackedByChangeset.push(index)
@@ -723,7 +704,6 @@ export class Merge{
                 offset += docNodeOffset
                 attrs = Object.assign({}, child.attrs)
                 attrs.hidden = false
-                console.log(offlineTr.doc.nodeAt(offset))
                 offlineTr.setNodeMarkup(offset, false, attrs).setMeta('settings', true)
                 offset = 1
             }
@@ -754,18 +734,17 @@ export class Merge{
     }
 
     openDiffEditors(cpDoc,offlineDoc,onlineDoc,offlineTr,onlineTr){
+        // Put a wait screen
+        activateWait()
+
         this.mergeDialog  = this.createMergeDialog(offlineTr,onlineTr,onlineDoc)
         this.mergeDialog.open()
         onlineTr = this.modifyTr(onlineTr)
+        offlineTr = this.modifyTr(offlineTr)
         this.offlineTr = offlineTr
         this.onlineTr = onlineTr
-        this.Dep = {}
-        this.Dep['online'] = {}
-        this.Dep['offline'] = {}
-        console.log("ONLINE",onlineTr)
-        console.log("OFFLINE",offlineTr)
-
         this.mergedDocMap = new Mapping()
+
         // Create multiple editor views
         this.mergeView1 = this.bindEditorView('editor-diff-1',offlineDoc)
         this.mergeView2 = this.bindEditorView('editor-diff',cpDoc)
@@ -794,8 +773,8 @@ export class Merge{
 
         this.offStepsNotTracked = this.findNotTrackedSteps(offlineTr,offlineTrackedSteps)
         this.onStepsNotTracked = this.findNotTrackedSteps(onlineTr,onlineTrackedSteps)
-        console.log("OFFLINE NOT TR",this.offStepsNotTracked)
-        console.log("ONLINE NOT TR",this.onStepsNotTracked)
+
+        deactivateWait()
     }
 
     diffMerge(cpDoc,offlineDoc,onlineDoc,offlineTr,onlineTr,data){

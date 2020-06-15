@@ -5,28 +5,30 @@ import { Mapping } from "prosemirror-transform"
 
 const key = new PluginKey('mergeDiff')
 
-export const removeMarks = function(view,from,to,mark){
+export const removeMarks = function(view,from,to,mark,returnTr=false){
     const trackedTr = view.state.tr
-        trackedTr.doc.nodesBetween(
-            from,
-            to,
-            (node, pos) => {
-                if (pos < from || ['bullet_list', 'ordered_list'].includes(node.type.name)) {
-                    return true
-                } else if (node.isInline) {
-                    return false
-                }
-                if (node.attrs.diffdata && node.attrs.diffdata.length>0) {
-                    const diffdata = []
-                    trackedTr.setNodeMarkup(pos, null, Object.assign({}, node.attrs, {diffdata}), node.marks)
-                }
+    trackedTr.doc.nodesBetween(
+        from,
+        to,
+        (node, pos) => {
+            if (pos < from || ['bullet_list', 'ordered_list'].includes(node.type.name)) {
+                return true
+            } else if (node.isInline) {
+                return false
             }
-        )
-        trackedTr.removeMark(from,to,mark)
-        trackedTr.setMeta('initialDiffMap',true).setMeta('mapTracked',true)
-        trackedTr.setMeta('notrack',true)
-        view.dispatch(trackedTr)
-
+            if (node.attrs.diffdata && node.attrs.diffdata.length>0) {
+                const diffdata = []
+                trackedTr.setNodeMarkup(pos, null, Object.assign({}, node.attrs, {diffdata}), node.marks)
+            }
+        }
+    )
+    trackedTr.removeMark(from,to,mark)
+    if(returnTr){
+        return trackedTr
+    }
+    trackedTr.setMeta('initialDiffMap',true).setMeta('mapTracked',true)
+    trackedTr.setMeta('notrack',true)
+    view.dispatch(trackedTr)
 }
 
 export const diffPlugin = function(options) {
@@ -113,7 +115,7 @@ export const diffPlugin = function(options) {
     function acceptChanges(mark,editor,mergeView,originalView,tr,trType){
         try {
             const mergedDocMap = editor.mod.collab.doc.merge.mergedDocMap
-            const insertionTr = mergeView.state.tr
+            let insertionTr = mergeView.state.tr
             const from = mark.attrs.from
             const to = mark.attrs.to
             const steps = JSON.parse(mark.attrs.steps)
@@ -133,26 +135,17 @@ export const diffPlugin = function(options) {
             if(insertionTr.steps.length < steps.length){
                 showSystemMessage(gettext("The change could not be applied automatically.Please consider using the copy option to copy the changes."))
             } else {
-                const markDependency = editor.mod.collab.doc.merge.Dep
-                steps.forEach(stepIndex=>{
-                    for(let dep_index in markDependency[trType]){
-                        if(markDependency[trType][dep_index].includes(stepIndex)){
-                            markDependency[trType][dep_index] = markDependency[trType][dep_index].filter(value=>value!==stepIndex)
-                            if(markDependency[trType][dep_index].length == 0){
-                                const mapStep = tr.steps[dep_index].map(rebasedMapping)
-                                if(mapStep)
-                                    insertionTr.maybeStep(mapStep)
-                            }
-                        }
-                    }
-                })
-                
+                // Remove the diff mark.If we're looking at view2 it means we're deleting content for which we dont have to remove the marks seperately we can put both of the steps into a single transaction
+                if(originalView === mergeView){
+                    let markRemovalTr = removeMarks(originalView,from,to,editor.schema.marks.DiffMark,true)
+                    insertionTr.steps.forEach(step => markRemovalTr.step(step))
+                    insertionTr = markRemovalTr
+                } else {
+                    removeMarks(originalView,from,to,editor.schema.marks.DiffMark)
+                }
                 insertionTr.setMeta('mapTracked',true)
-                // if(!tr.doc.firstChild.attrs.tracked && options.editor.docInfo.access_rights !== "write-tracked")
                 insertionTr.setMeta('notrack',true)
                 mergeView.dispatch(insertionTr)
-                // Remove the diff mark
-                removeMarks(originalView,from,to,editor.schema.marks.DiffMark)
             }
         } catch(exc){
             showSystemMessage(gettext("The change could not be applied automatically.Please consider using the copy option to copy the changes."))
