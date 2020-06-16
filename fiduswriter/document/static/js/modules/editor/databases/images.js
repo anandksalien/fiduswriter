@@ -70,7 +70,7 @@ export class ModImageDB {
     deleteLocalImage(id) {
         const usedImages = []
         this.mod.editor.view.state.doc.descendants(node => {
-            if (node.type.name==='figure' && node.attrs.image) {
+            if (node.type.name === 'figure' && node.attrs.image) {
                 usedImages.push(node.attrs.image)
             }
         })
