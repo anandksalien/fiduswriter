@@ -15,7 +15,8 @@ import {
     showSystemMessage,
     Dialog,
     activateWait,
-    deactivateWait
+    deactivateWait,
+    addAlert
 } from "../../common"
 import {
     recreateTransform
@@ -133,6 +134,7 @@ export class Merge {
             }
         })
         const oldImageDB = this.mod.editor.mod.db.imageDB.db
+        let imageUploadFailDialogShown = false
         this.mod.editor.mod.db.imageDB.setDB(data.doc.images)
         usedImages.forEach(id => {
             if (!this.mod.editor.mod.db.imageDB.db[id] && oldImageDB[id]) {
@@ -163,12 +165,36 @@ export class Merge {
                                     this.mergeView2.dispatch(transaction)
                                 }
                             })
+                        },
+                        (id)=>{
+                            // In case of failure make the id as false so the failed upload image is empty for the offline user too!
+                            this.mergeView1.state.doc.descendants((node, pos) => {
+                                if (node.type.name === 'figure' && node.attrs.image == id) {
+                                    const attrs = Object.assign({}, node.attrs)
+                                    attrs["image"] = false
+                                    const nodeType = this.mergeView1.state.schema.nodes['figure']
+                                    const transaction = this.mergeView1.state.tr.setNodeMarkup(pos, nodeType, attrs)
+                                    this.mergeView1.dispatch(transaction)
+                                }
+                            })
+                            this.mergeView2.state.doc.descendants((node, pos) => {
+                                if (node.type.name === 'figure' && node.attrs.image == id) {
+                                    const attrs = Object.assign({}, node.attrs)
+                                    attrs["image"] = false
+                                    const nodeType = this.mergeView2.state.schema.nodes['figure']
+                                    const transaction = this.mergeView2.state.tr.setNodeMarkup(pos, nodeType, attrs)
+                                    this.mergeView2.dispatch(transaction)
+                                }
+                            })
+                            if (!imageUploadFailDialogShown) {
+                                imageUploadFailDialogShown =  true
+                                showSystemMessage(gettext("One or more of the image(s) you copied could not be found on the server. Consider re-uploading them once the document is merged."))
+                            }
                         }
                     )
                 }
             }
         })
-
     }
 
     applyChangesToEditor(tr, onlineDoc) {
@@ -547,11 +573,13 @@ export class Merge {
                         return tr
                     }
                 } else {
-                    newTr.step(step)
+                    if (newTr.maybeStep(step).failed)
+                        return tr
                 }
 
             } else {
-                newTr.step(step)
+                if (newTr.maybeStep(step).failed)
+                    return tr
             }
         })
         return newTr
@@ -711,7 +739,22 @@ export class Merge {
                     this.mod.editor.mod.db.imageDB.setImage(id, oldImageDB[id])
                 } else {
                     // If the image was uploaded by someone else , to set the image we have to reupload it again as there is backend check to associate who can add an image with the image owner.
-                    this.mod.editor.mod.db.imageDB.reUploadImage(id, oldImageDB[id].image, oldImageDB[id].title, oldImageDB[id].copyright)
+                    this.mod.editor.mod.db.imageDB.reUploadImage(id, oldImageDB[id].image, oldImageDB[id].title, oldImageDB[id].copyright).then(
+                        ()=>{},
+                        (id)=>{
+                            const transaction = this.mod.editor.view.state.tr
+                            this.mod.editor.view.state.doc.descendants((node, pos) => {
+                                if (node.type.name === 'figure' && node.attrs.image == id) {
+                                    const attrs = Object.assign({}, node.attrs)
+                                    attrs["image"] = false
+                                    const nodeType = this.mod.editor.currentView.state.schema.nodes['figure']
+                                    transaction.setNodeMarkup(pos, nodeType, attrs)
+                                }
+                            })
+                            this.mod.editor.view.dispatch(transaction)
+                            addAlert('error', gettext("One of the Image(s) you copied could not be found on the server. Please try uploading it again."))
+                        }
+                    )
                 }
             }
         })
