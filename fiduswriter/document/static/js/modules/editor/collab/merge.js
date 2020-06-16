@@ -105,9 +105,9 @@ export class Merge {
         const usedImages = [],
             usedBibs = []
         const footnoteFind = (node, usedImages, usedBibs) => {
-            if (node.name==='citation') {
+            if (node.name === 'citation') {
                 node.attrs.references.forEach(ref => usedBibs.push(parseInt(ref.id)))
-            } else if (node.name==='figure' && node.attrs.image) {
+            } else if (node.name === 'figure' && node.attrs.image) {
                 usedImages.push(node.attrs.image)
             } else if (node.content) {
                 node.content.forEach(subNode => footnoteFind(subNode, usedImages, usedBibs))
@@ -116,11 +116,11 @@ export class Merge {
 
         // Looking at rebased doc so that it contains the merged document !!!
         doc.descendants(node => {
-            if (node.type.name==='citation') {
+            if (node.type.name === 'citation') {
                 node.attrs.references.forEach(ref => usedBibs.push(parseInt(ref.id)))
-            } else if (node.type.name==='figure' && node.attrs.image) {
+            } else if (node.type.name === 'figure' && node.attrs.image) {
                 usedImages.push(node.attrs.image)
-            } else if (node.type.name==='footnote' && node.attrs.footnote) {
+            } else if (node.type.name === 'footnote' && node.attrs.footnote) {
                 node.attrs.footnote.forEach(subNode => footnoteFind(subNode, usedImages, usedBibs))
             }
         })
@@ -146,7 +146,7 @@ export class Merge {
                         ({id, new_id})=>{
                             // Update the image node if there are any re uploaded images.
                             this.mergeView1.state.doc.descendants((node, pos) => {
-                                if (node.type.name==='figure' && node.attrs.image == id) {
+                                if (node.type.name === 'figure' && node.attrs.image == id) {
                                     const attrs = Object.assign({}, node.attrs)
                                     attrs["image"] = new_id
                                     const nodeType = this.mergeView1.state.schema.nodes['figure']
@@ -155,7 +155,7 @@ export class Merge {
                                 }
                             })
                             this.mergeView2.state.doc.descendants((node, pos) => {
-                                if (node.type.name==='figure' && node.attrs.image == id) {
+                                if (node.type.name === 'figure' && node.attrs.image == id) {
                                     const attrs = Object.assign({}, node.attrs)
                                     attrs["image"] = new_id
                                     const nodeType = this.mergeView2.state.schema.nodes['figure']
@@ -175,7 +175,7 @@ export class Merge {
         const OnlineStepsLost = recreateTransform(onlineDoc, this.mod.editor.view.state.doc)
         const onlineStepsLostChangeset = new changeSet(OnlineStepsLost)
         const conflicts = onlineStepsLostChangeset.findConflicts(tr, OnlineStepsLost)
-        if (conflicts.length>0) {
+        if (conflicts.length > 0) {
             this.openDiffEditors(onlineDoc, tr.doc, OnlineStepsLost.doc, tr, OnlineStepsLost)
         } else {
             const newTr = this.mod.editor.view.state.tr
@@ -184,7 +184,7 @@ export class Merge {
                 const mapped = step.map(maps.slice(tr.steps.length - index))
                 if (mapped && !newTr.maybeStep(mapped).failed) {
                     maps.appendMap(mapped.getMap())
-                    maps.setMirror(tr.steps.length-index-1, (tr.steps.length+OnlineStepsLost.steps.length+newTr.steps.length-1))
+                    maps.setMirror(tr.steps.length - index - 1, (tr.steps.length + OnlineStepsLost.steps.length + newTr.steps.length - 1))
                 }
             })
             newTr.setMeta('remote', true)
@@ -237,12 +237,12 @@ export class Merge {
         onlineRebaseMapping.appendMapping(this.mergedDocMap)
         this.onStepsNotTracked.forEach(markstep=>{
             const stepIndex = parseInt(onlineTr.steps.indexOf(markstep))
-            const onlineRebaseMap = onlineRebaseMapping.slice(onlineTr.steps.length-stepIndex)
+            const onlineRebaseMap = onlineRebaseMapping.slice(onlineTr.steps.length - stepIndex)
             const mappedMarkStep = markstep.map(onlineRebaseMap)
             if (mappedMarkStep && !markTr.maybeStep(mappedMarkStep).failed) {
                 this.mergedDocMap.appendMap(mappedMarkStep.getMap())
                 onlineRebaseMapping.appendMap(mappedMarkStep.getMap())
-                onlineRebaseMapping.setMirror(onlineTr.steps.length-stepIndex-1, (onlineTr.steps.length+this.mergedDocMap.maps.length-1))
+                onlineRebaseMapping.setMirror(onlineTr.steps.length - stepIndex - 1, (onlineTr.steps.length + this.mergedDocMap.maps.length - 1))
             }
         })
         const offlineRebaseMapping = new Mapping()
@@ -250,12 +250,12 @@ export class Merge {
         offlineRebaseMapping.appendMapping(this.mergedDocMap)
         this.offStepsNotTracked.forEach(markstep=>{
             const stepIndex = offlineTr.steps.indexOf(markstep)
-            const offlineRebaseMap = offlineRebaseMapping.slice(offlineTr.steps.length-stepIndex)
+            const offlineRebaseMap = offlineRebaseMapping.slice(offlineTr.steps.length - stepIndex)
             const mappedMarkStep = markstep.map(offlineRebaseMap)
             if (mappedMarkStep && !markTr.maybeStep(mappedMarkStep).failed) {
                 this.mergedDocMap.appendMap(mappedMarkStep.getMap())
                 offlineRebaseMapping.appendMap(mappedMarkStep.getMap())
-                offlineRebaseMapping.setMirror(offlineTr.steps.length-stepIndex-1, (offlineTr.steps.length+this.mergedDocMap.maps.length-1))
+                offlineRebaseMapping.setMirror(offlineTr.steps.length - stepIndex - 1, (offlineTr.steps.length + this.mergedDocMap.maps.length - 1))
             }
         })
         this.mergeView2.dispatch(markTr)
@@ -282,8 +282,8 @@ export class Merge {
 
     checkResolution() {
         const offlineVersionDoc = this.mergeView1.state.doc,
-        onlineVersionDoc = this.mergeView3.state.doc,
-        mergedVersionDoc = this.mergeView2.state.doc
+            onlineVersionDoc = this.mergeView3.state.doc,
+            mergedVersionDoc = this.mergeView2.state.doc
         let diffAttrPresent = false
         if (offlineVersionDoc.rangeHasMark(0, offlineVersionDoc.content.size, this.mod.editor.schema.marks.DiffMark) ||
             onlineVersionDoc.rangeHasMark(0, onlineVersionDoc.content.size, this.mod.editor.schema.marks.DiffMark) ||
@@ -292,17 +292,17 @@ export class Merge {
             return true
         }
         offlineVersionDoc.nodesBetween(0, offlineVersionDoc.content.size, (node, _pos)=>{
-            if (node.attrs.diffdata && node.attrs.diffdata.length>0) {
+            if (node.attrs.diffdata && node.attrs.diffdata.length > 0) {
                 diffAttrPresent = true
             }
         })
         onlineVersionDoc.nodesBetween(0, onlineVersionDoc.content.size, (node, _pos)=>{
-            if (node.attrs.diffdata && node.attrs.diffdata.length>0) {
+            if (node.attrs.diffdata && node.attrs.diffdata.length > 0) {
                 diffAttrPresent = true
             }
         })
         mergedVersionDoc.nodesBetween(0, mergedVersionDoc.content.size, (node, _pos)=>{
-            if (node.attrs.diffdata && node.attrs.diffdata.length>0) {
+            if (node.attrs.diffdata && node.attrs.diffdata.length > 0) {
                 diffAttrPresent = true
             }
         })
@@ -423,7 +423,7 @@ export class Merge {
         let stepsTrackedByChangeset = []
         // Use the changeset to create the marks
         changeset.changes.forEach(change=>{
-            if (change.inserted.length>0) {
+            if (change.inserted.length > 0) {
                 let steps_involved = []
                 change.inserted.forEach(insertion=>steps_involved.push(parseInt(insertion.data.step)))
                 const stepsSet = new Set(steps_involved)
@@ -431,12 +431,12 @@ export class Merge {
 
                 // Add the footnote related steps because the changeset tracks change but misses some steps related to insertion of footnote node!
                 tr.steps.forEach((step, index)=>{
-                    if (step.from >= change.fromB && step.to<=change.toB && step instanceof ReplaceStep && !steps_involved.includes(index)) {
+                    if (step.from >= change.fromB && step.to <= change.toB && step instanceof ReplaceStep && !steps_involved.includes(index)) {
                         const Step1 = step.toJSON()
-                        if (Step1.slice && Step1.slice.content.length == 1 && (Step1.slice.content[0].type === "footnote" ||Step1.slice.content[0].type === "citation")) {
+                        if (Step1.slice && Step1.slice.content.length == 1 && (Step1.slice.content[0].type === "footnote" || Step1.slice.content[0].type === "citation")) {
                             steps_involved.push(index)
                         }
-                    } else if (step.from >= change.fromB && step.to<=change.toB && step instanceof AddMarkStep && !steps_involved.includes(index)) {
+                    } else if (step.from >= change.fromB && step.to <= change.toB && step instanceof AddMarkStep && !steps_involved.includes(index)) {
                         const Step1 = step.toJSON()
                         if (Step1.mark && ["strong", "em", "underline", "link", "deletion", "insertion", "comment"].includes(Step1.mark.type)) {
                             steps_involved.push(index)
@@ -444,21 +444,21 @@ export class Merge {
                     }
                 })
 
-                steps_involved.sort((a, b)=>a-b)
+                steps_involved.sort((a, b)=>a - b)
                 const insertionMark = this.mod.editor.schema.marks.DiffMark.create({diff:insertionClass, steps:JSON.stringify(steps_involved), from:change.fromB, to:change.toB})
                 insertionMarksTr.addMark(change.fromB, change.toB, insertionMark)
                 this.markBlockDiffs(insertionMarksTr, change.fromB, change.toB, insertionClass, steps_involved)
-                stepsTrackedByChangeset=stepsTrackedByChangeset.concat(steps_involved)
-            } if (change.deleted.length>0) {
+                stepsTrackedByChangeset = stepsTrackedByChangeset.concat(steps_involved)
+            } if (change.deleted.length > 0) {
                 let steps_involved = []
                 change.deleted.forEach(deletion=>steps_involved.push(parseInt(deletion.data.step)))
                 const stepsSet = new Set(steps_involved)
                 steps_involved = Array.from(stepsSet)
-                steps_involved.sort((a, b)=>a-b)
+                steps_involved.sort((a, b)=>a - b)
                 const deletionMark = this.mod.editor.schema.marks.DiffMark.create({diff:deletionClass, steps:JSON.stringify(steps_involved), from:change.fromA, to:change.toA})
                 deletionMarksTr.addMark(change.fromA, change.toA, deletionMark)
                 this.markBlockDiffs(deletionMarksTr, change.fromA, change.toA, deletionClass, steps_involved)
-                stepsTrackedByChangeset=stepsTrackedByChangeset.concat(steps_involved)
+                stepsTrackedByChangeset = stepsTrackedByChangeset.concat(steps_involved)
             }
         })
 
@@ -480,7 +480,7 @@ export class Merge {
                 }
                 else if (Step1.slice && Step1.slice.content.length == 1 && Step1.slice.content[0].type === "figure") {
                     if (Step1.from == Step1.to) {
-                        this.markBlockDiffs(insertionMarksTr, Step1.from, Step1.to+1, insertionClass, [index])
+                        this.markBlockDiffs(insertionMarksTr, Step1.from, Step1.to + 1, insertionClass, [index])
                     } else {
                         this.markBlockDiffs(insertionMarksTr, Step1.from, Step1.to, insertionClass, [index])
                     }
@@ -515,7 +515,7 @@ export class Merge {
 
     renderCitation(view, elementId) {
         const settings = view.state.doc.firstChild.attrs,
-        bibliographyHeader = settings.bibliography_header[settings.language] || BIBLIOGRAPHY_HEADERS[settings.language]
+            bibliographyHeader = settings.bibliography_header[settings.language] || BIBLIOGRAPHY_HEADERS[settings.language]
         const citRenderer = new RenderCitations(
             document.getElementById(elementId),
             settings.citationstyle,
@@ -537,7 +537,7 @@ export class Merge {
                     step.to,
                     step.slice,
                     step.structure
-                ):false
+                ) : false
                 if (modifiedStep) {
                     // If while breaking down any step the step fails , we return the original tr (we just split steps containing both insertions and deletions into simple steps which does just insertion/deletion. should not make a big difference.)
                     if (newTr.maybeStep(modifiedStep).failed) {
@@ -642,7 +642,7 @@ export class Merge {
                 const mapped = step.map(maps.slice(unconfirmedTr.steps.length - index))
                 if (mapped && !rebasedTr.maybeStep(mapped).failed) {
                     maps.appendMap(mapped.getMap())
-                    maps.setMirror(unconfirmedTr.steps.length-index-1, (unconfirmedTr.steps.length+lostTr.steps.length+rebasedTr.steps.length-1))
+                    maps.setMirror(unconfirmedTr.steps.length - index - 1, (unconfirmedTr.steps.length + lostTr.steps.length + rebasedTr.steps.length - 1))
                 }
             }
         )
@@ -675,20 +675,20 @@ export class Merge {
         let usedImages = []
         const usedBibs = []
         const footnoteFind = (node, usedImages, usedBibs) => {
-            if (node.name==='citation') {
+            if (node.name === 'citation') {
                 node.attrs.references.forEach(ref => usedBibs.push(parseInt(ref.id)))
-            } else if (node.name==='figure' && node.attrs.image) {
+            } else if (node.name === 'figure' && node.attrs.image) {
                 usedImages.push(node.attrs.image)
             } else if (node.content) {
                 node.content.forEach(subNode => footnoteFind(subNode, usedImages, usedBibs))
             }
         }
         rebasedTr.doc.descendants(node => {
-            if (node.type.name==='citation') {
+            if (node.type.name === 'citation') {
                 node.attrs.references.forEach(ref => usedBibs.push(parseInt(ref.id)))
-            } else if (node.type.name==='figure' && node.attrs.image) {
+            } else if (node.type.name === 'figure' && node.attrs.image) {
                 usedImages.push(node.attrs.image)
-            } else if (node.type.name==='footnote' && node.attrs.footnote) {
+            } else if (node.type.name === 'footnote' && node.attrs.footnote) {
                 node.attrs.footnote.forEach(subNode => footnoteFind(subNode, usedImages, usedBibs))
             }
         })

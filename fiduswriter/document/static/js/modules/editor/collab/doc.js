@@ -147,7 +147,7 @@ export class ModCollabDoc {
             this.mod.editor.docInfo.version = data.doc.v
 
             // If no conflicts arises auto-merge the document
-            if (conflicts.length>0) {
+            if (conflicts.length > 0) {
                 this.merge.diffMerge(confirmedState.doc, unconfirmedTr.doc, toDoc, unconfirmedTr, lostTr, data)
             } else {
                 this.merge.autoMerge(unconfirmedTr, lostTr, data)

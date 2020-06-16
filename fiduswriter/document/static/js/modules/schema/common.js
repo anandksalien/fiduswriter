@@ -792,16 +792,16 @@ export const insertion = {
 export const DiffMark = {
     attrs: {
         diff:{
-          default:""
+            default:""
         },
         steps:{
-          default:[]
+            default:[]
         },
         from:{
-          default:''
+            default:''
         },
         to:{
-          default:''
+            default:''
         }
     },
     parseDOM: [
@@ -809,8 +809,8 @@ export const DiffMark = {
             tag: "span.diff",
             getAttrs(dom) {
                 return {
-                diff:dom.dataset.diff,
-                steps:dom.dataset.steps,
+                    diff:dom.dataset.diff,
+                    steps:dom.dataset.steps,
                 }
             }
         }

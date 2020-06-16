@@ -4359,7 +4359,3 @@ msgstr "Social Account Anbieter"
 #: user/static/js/modules/profile/templates.js:70
 msgid "Connect"
 msgstr "Verbinden"
-<<<<<<< HEAD
-
-=======
->>>>>>> cf40a637946bc2fae2a4bdae023b0d1677f57c05

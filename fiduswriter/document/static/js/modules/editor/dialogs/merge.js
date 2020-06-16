@@ -81,8 +81,8 @@ export class mergeHelpDialog {
         this.helpDialog.open()
         const question_items = document.querySelectorAll('.merge-question .fa-plus-circle')
         question_items.forEach(element=>{
-                const answerEle = element.parentNode.nextSibling.nextElementSibling
-                answerEle.style.display = "none"
+            const answerEle = element.parentNode.nextSibling.nextElementSibling
+            answerEle.style.display = "none"
         })
         question_items.forEach(element=>{
             element.addEventListener('click', ()=>{

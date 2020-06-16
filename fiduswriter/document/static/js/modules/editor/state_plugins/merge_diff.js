@@ -8,7 +8,7 @@ const key = new PluginKey('mergeDiff')
 export const updateMarkData = function(tr) {
     // Update the range inside the marks !!
     const initialdiffMap = tr.getMeta('initialDiffMap')
-    if (!initialdiffMap && (tr.steps.length>0 || tr.docChanged)) {
+    if (!initialdiffMap && (tr.steps.length > 0 || tr.docChanged)) {
         tr.doc.nodesBetween(
             0,
             tr.doc.content.size,
@@ -16,17 +16,17 @@ export const updateMarkData = function(tr) {
                 if (['bullet_list', 'ordered_list'].includes(node.type.name)) {
                     return true
                 } else if (node.isInline) {
-                    let diffMark = node.marks.find(mark=>mark.type.name=="DiffMark")
-                    if (diffMark!== undefined) {
+                    let diffMark = node.marks.find(mark=>mark.type.name == "DiffMark")
+                    if (diffMark !== undefined) {
                         diffMark = diffMark.attrs
-                        tr.removeMark(pos, pos+node.nodeSize, tr.doc.type.schema.marks.DiffMark)
+                        tr.removeMark(pos, pos + node.nodeSize, tr.doc.type.schema.marks.DiffMark)
                         const from = tr.mapping.map(diffMark.from)
                         const to = tr.mapping.map(diffMark.to, -1)
                         const mark = tr.doc.type.schema.marks.DiffMark.create({diff:diffMark.diff, steps:diffMark.steps, from:from, to:to})
-                        tr.addMark(pos, pos+node.nodeSize, mark)
+                        tr.addMark(pos, pos + node.nodeSize, mark)
                     }
                 }
-                if (node.attrs.diffdata && node.attrs.diffdata.length>0) {
+                if (node.attrs.diffdata && node.attrs.diffdata.length > 0) {
                     const diffdata = node.attrs.diffdata
                     diffdata[0].from = tr.mapping.map(diffdata[0].from)
                     diffdata[0].to = tr.mapping.map(diffdata[0].to)
@@ -38,7 +38,7 @@ export const updateMarkData = function(tr) {
     return tr
 }
 
-export const removeMarks = function(view, from, to, mark, returnTr=false) {
+export const removeMarks = function(view, from, to, mark, returnTr = false) {
     const trackedTr = view.state.tr
     trackedTr.doc.nodesBetween(
         from,
@@ -49,7 +49,7 @@ export const removeMarks = function(view, from, to, mark, returnTr=false) {
             } else if (node.isInline) {
                 return false
             }
-            if (node.attrs.diffdata && node.attrs.diffdata.length>0) {
+            if (node.attrs.diffdata && node.attrs.diffdata.length > 0) {
                 const diffdata = []
                 trackedTr.setNodeMarkup(pos, null, Object.assign({}, node.attrs, {diffdata}), node.marks)
             }
@@ -73,7 +73,7 @@ export const diffPlugin = function(options) {
         if (markFound === undefined) {
             markFound = {}
             const node = state.selection.$head.nodeBefore
-            if (node  && node.attrs.diffdata && node.attrs.diffdata.length>0) {
+            if (node  && node.attrs.diffdata && node.attrs.diffdata.length > 0) {
                 markFound['diff'] = node.attrs.diffdata[0].type
                 markFound['attrs'] = {}
                 markFound['attrs']['diff'] = node.attrs.diffdata[0].type
@@ -98,8 +98,8 @@ export const diffPlugin = function(options) {
                 } else if (node.isInline) {
                     return false
                 }
-                if (node && node.attrs.diffdata && node.attrs.diffdata.length>0) {
-                    deco.push(Decoration.node(pos, pos+node.nodeSize, {class:'selected-dec'}, {}))
+                if (node && node.attrs.diffdata && node.attrs.diffdata.length > 0) {
+                    deco.push(Decoration.node(pos, pos + node.nodeSize, {class:'selected-dec'}, {}))
                 }
             }
         )
@@ -121,7 +121,7 @@ export const diffPlugin = function(options) {
         if (!currentMarks.length) {
             const node = state.selection instanceof NodeSelection ? state.selection.node : state.selection.$head.parent
             const markFound = {}
-            if (node && node.attrs.diffdata && node.attrs.diffdata.length>0) {
+            if (node && node.attrs.diffdata && node.attrs.diffdata.length > 0) {
                 markFound['image'] = true
                 markFound['attrs'] = {}
                 markFound['attrs']['diff'] = node.attrs.diffdata[0].type
@@ -130,7 +130,7 @@ export const diffPlugin = function(options) {
                 markFound['attrs']['steps'] = JSON.stringify(node.attrs.diffdata[0].steps)
                 const startPos = $head.pos// position of block start.
                 const dom = createDropUp(markFound),
-                deco = Decoration.widget(startPos, dom)
+                    deco = Decoration.widget(startPos, dom)
                 const highlightDecos = createHiglightDecoration(markFound['attrs']["from"], markFound['attrs']["to"], state)
                 highlightDecos.push(deco)
                 return DecorationSet.create(state.doc, highlightDecos)
@@ -156,12 +156,12 @@ export const diffPlugin = function(options) {
             const rebasedMapping = new Mapping(stepMaps)
             rebasedMapping.appendMapping(mergedDocMap)
             for (const stepIndex of steps) {
-                const maps = rebasedMapping.slice(tr.steps.length-stepIndex)
+                const maps = rebasedMapping.slice(tr.steps.length - stepIndex)
                 const mappedStep = tr.steps[stepIndex].map(maps)
                 if (mappedStep && !insertionTr.maybeStep(mappedStep).failed) {
                     mergedDocMap.appendMap(mappedStep.getMap())
                     rebasedMapping.appendMap(mappedStep.getMap())
-                    rebasedMapping.setMirror(tr.steps.length-stepIndex-1, (tr.steps.length+mergedDocMap.maps.length-1))
+                    rebasedMapping.setMirror(tr.steps.length - stepIndex - 1, (tr.steps.length + mergedDocMap.maps.length - 1))
                 }
             }
             // Make sure that all the content steps are present in the new transaction
@@ -220,8 +220,8 @@ export const diffPlugin = function(options) {
 
     function createDropUp(diffMark, linkMark) {
         const dropUp = document.createElement('span'),
-        editor = options.editor, requiredPx=10,
-        tr = diffMark.attrs.diff.search('offline') != -1 ? editor.mod.collab.doc.merge.offlineTr : editor.mod.collab.doc.merge.onlineTr
+            editor = options.editor, requiredPx = 10,
+            tr = diffMark.attrs.diff.search('offline') != -1 ? editor.mod.collab.doc.merge.offlineTr : editor.mod.collab.doc.merge.onlineTr
         let view
         if (diffMark.attrs.diff.search('offline') != -1) {
             if (diffMark.attrs.diff.search('inserted') != -1) {
@@ -241,19 +241,19 @@ export const diffPlugin = function(options) {
         dropUp.innerHTML = noSpaceTmp`
             <div class="link drop-up-inner" style="top: -${requiredPx}px;">
                 ${
-                    diffMark ?
-                    `<div class="drop-up-head">
+    diffMark ?
+        `<div class="drop-up-head">
                         ${
-                            diffMark.attrs.diff ?
-                            `<div class="link-title">${gettext('Change')}:&nbsp; ${ (diffMark.attrs.diff.search('deleted') !=-1) ? (diffMark.attrs.diff.search('offline') !=-1 ? gettext('Deleted by you') :gettext('Deleted by Online user')):''}</div>` :
-                            ''
-                        }
+    diffMark.attrs.diff ?
+        `<div class="link-title">${gettext('Change')}:&nbsp; ${ (diffMark.attrs.diff.search('deleted') != -1) ? (diffMark.attrs.diff.search('offline') != -1 ? gettext('Deleted by you') : gettext('Deleted by Online user')) : ''}</div>` :
+        ''
+}
                         ${
-                            linkMark ? `<div> Link : ${linkMark.attrs.href}</div>`:``
-                        }
+    linkMark ? `<div> Link : ${linkMark.attrs.href}</div>` : ``
+}
                         ${
-                            linkMark ? `<div> Type : ${linkMark.attrs.href[0] == "#"?`internal`:`external`}</div>`:``
-                        }
+    linkMark ? `<div> Type : ${linkMark.attrs.href[0] == "#" ? `internal` : `external`}</div>` : ``
+}
                     </div>
                     <ul class="drop-up-options">
                         <li class="accept-change" title="${gettext('Accept Change')}">
@@ -266,8 +266,8 @@ export const diffPlugin = function(options) {
                             ${gettext('Copy')}
                         </li>
                     </ul>` :
-                    ''
-                }
+        ''
+}
             </div>`
 
         const acceptChange = dropUp.querySelector('.accept-change')
