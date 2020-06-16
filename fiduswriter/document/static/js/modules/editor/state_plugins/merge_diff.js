@@ -5,6 +5,39 @@ import { Mapping } from "prosemirror-transform"
 
 const key = new PluginKey('mergeDiff')
 
+export const updateMarkData = function(tr){
+    // Update the range inside the marks !!
+    const initialdiffMap = tr.getMeta('initialDiffMap')
+    if(!initialdiffMap && (tr.steps.length>0 || tr.docChanged)){
+        tr.doc.nodesBetween(
+            0,
+            tr.doc.content.size,
+            (node, pos) => {
+                if (['bullet_list', 'ordered_list'].includes(node.type.name)) {
+                    return true
+                } else if (node.isInline){
+                    let diffMark = node.marks.find(mark=>mark.type.name=="DiffMark")
+                    if(diffMark!== undefined){
+                        diffMark = diffMark.attrs
+                        tr.removeMark(pos,pos+node.nodeSize,tr.doc.type.schema.marks.DiffMark)
+                        const from = tr.mapping.map(diffMark.from)
+                        const to = tr.mapping.map(diffMark.to,-1)
+                        const mark = tr.doc.type.schema.marks.DiffMark.create({ diff:diffMark.diff,steps:diffMark.steps,from:from,to:to })
+                        tr.addMark(pos,pos+node.nodeSize,mark)
+                    }
+                }
+                if (node.attrs.diffdata && node.attrs.diffdata.length>0) {
+                    const diffdata = node.attrs.diffdata
+                    diffdata[0].from = tr.mapping.map(diffdata[0].from)
+                    diffdata[0].to = tr.mapping.map(diffdata[0].to)
+                    tr.setNodeMarkup(pos, null, Object.assign({}, node.attrs, {diffdata}), node.marks)
+                }
+            }
+        )
+    }
+    return tr
+}
+
 export const removeMarks = function(view,from,to,mark,returnTr=false){
     const trackedTr = view.state.tr
     trackedTr.doc.nodesBetween(

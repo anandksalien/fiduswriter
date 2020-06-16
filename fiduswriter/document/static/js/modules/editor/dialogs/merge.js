@@ -1,4 +1,9 @@
-export const mergeHelpTemplate = `            
+import {
+    Dialog
+} from "../../common"
+
+const mergeHelpTemplate =
+`            
 <div class="merge-instruction">
     <ol class="instruction">
         <li class="instruction-item">
@@ -60,3 +65,40 @@ export const mergeHelpTemplate = `
     It is always better that you try to accept the changes in a linear fashion.
     Also it is better that you ask your collaborators to refrain from editing the document during this period of merge as it might cause conflicts when you try to merge the merged document with the latest version edited by the online user.
 </div>`
+export class mergeHelpDialog{
+    constructor(){
+        this.helpDialog = new Dialog({
+            id: 'editor-merge-help',
+            title: gettext("Frequently Asked Questions"),
+            body: mergeHelpTemplate,
+            height:600,
+            width:900,
+            buttons:[]
+        })
+    }
+
+    open(){
+        this.helpDialog.open()
+        const question_items = document.querySelectorAll('.merge-question .fa-plus-circle')
+        question_items.forEach(element=>{
+                const answerEle = element.parentNode.nextSibling.nextElementSibling
+                answerEle.style.display = "none"
+        })
+        question_items.forEach(element=>{
+            element.addEventListener('click',()=>{
+                const answerEle = element.parentNode.nextSibling.nextElementSibling
+                if (answerEle.style.display == ""){
+                    element.classList.remove("fa-minus-circle")
+                    element.classList.add("fa-plus-circle")
+                    answerEle.style.display = "none"
+                } else if (answerEle.style.display = "none"){
+                    element.classList.remove("fa-plus-circle")
+                    element.classList.add("fa-minus-circle")
+                    answerEle.style.display = ""
+                }
+            })
+        })
+    }
+
+}
+

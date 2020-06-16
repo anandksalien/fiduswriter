@@ -3,9 +3,6 @@ import {
     EditorState
 } from "prosemirror-state"
 import {
-    ChangeSet
-} from 'prosemirror-changeset'
-import {
     EditorView
 } from "prosemirror-view"
 import {
@@ -28,7 +25,8 @@ import {
 } from "../track"
 import { 
     diffPlugin,
-    removeMarks
+    removeMarks,
+    updateMarkData
 } from "../state_plugins/merge_diff"
 import { 
     FootnoteView 
@@ -72,9 +70,12 @@ import {
     RenderCitations
 } from "../../citations/render"
 import {
-    mergeHelpTemplate
+    mergeHelpDialog
 } from "../dialogs/merge"
 import { Slice } from "prosemirror-model"
+import { 
+    changeSet 
+} from "./changeset"
 
 export class Merge{
     constructor(mod){
@@ -102,75 +103,6 @@ export class Merge{
             [searchPlugin],
             [clipboardPlugin, () => ({editor: this.mod.editor, viewType: 'main'})]
         ]
-    }
-
-    trDoc(tr, index = 0) {
-        return tr.docs.length > index ? tr.docs[index] : tr.doc
-    }
-
-    findConflicts(tr1, tr2) {
-        let changes1 , changes2 , conflicts = []
-        changes1 = this.findContentChanges(tr1)
-        changes2 = this.findContentChanges(tr2)
-        
-        console.log("Changes1",JSON.parse(JSON.stringify(changes1)))
-        console.log("Changes2",JSON.parse(JSON.stringify(changes2)))
-
-        changes1.deletedsteps.forEach(deleted => {
-            changes2.insertedsteps.forEach(inserted => {
-                if (inserted.pos >= deleted.from && inserted.pos <= deleted.to) {
-                    conflicts.push([deleted.data.step,"deletion",inserted.data.step,"insertion"])
-                }
-            })
-        })
-
-        changes2.deletedsteps.forEach(deleted => {
-            changes1.insertedsteps.forEach(inserted => {
-                if (inserted.pos >= deleted.from && inserted.pos <= deleted.to) {
-                    conflicts.push([inserted.data.step,"insertion",deleted.data.step,"deletion"])
-                }
-            })
-        })
-        return conflicts
-    }
-
-    findContentChanges(tr) {
-        const doc = this.trDoc(tr)
-        let changes = ChangeSet.create(doc)
-        tr.steps.forEach((step, index) => {
-            const doc = this.trDoc(tr, index + 1)
-            changes = changes.addSteps(doc, [tr.mapping.maps[index]], {step: index})
-        })
-        const invertedMapping = new Mapping()
-        invertedMapping.appendMappingInverted(tr.mapping)
-
-        const insertedsteps = [] , deletedsteps = [] ,ins = [],del = []
-        changes.changes.forEach(change=>{
-            change.inserted.forEach(inserted=>{
-                if(!ins.includes(inserted.data.step)){
-                    insertedsteps.push({pos: invertedMapping.map(change.fromB), data: inserted.data })
-                    ins.push(inserted.data.step)
-                }
-            })
-            change.deleted.forEach(deleted=>{
-                if(!del.includes(deleted.data.step)){
-                    del.push(deleted.data.step)
-                    deletedsteps.push({from: change.fromA, to: change.toA, data: deleted.data})
-                }
-            })
-        })
-        return {insertedsteps, deletedsteps}
-    }
-
-    changeSet(tr){
-        const doc = this.trDoc(tr)
-        let changes = ChangeSet.create(doc)
-        tr.steps.forEach((step, index) => {
-            const doc = this.trDoc(tr, index + 1)
-            changes = changes.addSteps(doc, [tr.mapping.maps[index]], {step: index})
-        })
-        console.log("CHANGES",changes)
-        return changes
     }
 
     updateDB(doc,data){
@@ -245,7 +177,8 @@ export class Merge{
 
     applyChangesToEditor(tr,onlineDoc){
         const OnlineStepsLost = recreateTransform(onlineDoc,this.mod.editor.view.state.doc)
-        const conflicts = this.findConflicts(tr,OnlineStepsLost)
+        const onlineStepsLostChangeset = new changeSet(OnlineStepsLost)
+        const conflicts = onlineStepsLostChangeset.findConflicts(tr,OnlineStepsLost)
         if(conflicts.length>0){
             this.openDiffEditors(onlineDoc,tr.doc,OnlineStepsLost.doc,tr,OnlineStepsLost)
         } else {
@@ -274,7 +207,10 @@ export class Merge{
         return nonTrackedSteps
     }
 
-    markImageDiffs(tr,from,to,difftype,steps_involved){
+    markBlockDiffs(tr,from,to,difftype,steps_involved){
+        /*
+        This Function is used to add diff data to Block Elements. 
+        */
         tr.doc.nodesBetween(
             from,
             to,
@@ -292,37 +228,6 @@ export class Merge{
                 }
             }
         )
-    }
-
-    openHelpDialog(){
-        const helpDialog = new Dialog({
-            id: 'editor-merge-help',
-            title: gettext("Frequently Asked Questions"),
-            body: mergeHelpTemplate,
-            height:600,
-            width:900,
-            buttons:[]
-        })
-        helpDialog.open()
-        const question_items = document.querySelectorAll('.merge-question .fa-plus-circle')
-        question_items.forEach(element=>{
-                const answerEle = element.parentNode.nextSibling.nextElementSibling
-                answerEle.style.display = "none"
-        })
-        question_items.forEach(element=>{
-            element.addEventListener('click',()=>{
-                const answerEle = element.parentNode.nextSibling.nextElementSibling
-                if (answerEle.style.display == ""){
-                    element.classList.remove("fa-minus-circle")
-                    element.classList.add("fa-plus-circle")
-                    answerEle.style.display = "none"
-                } else if (answerEle.style.display = "none"){
-                    element.classList.remove("fa-plus-circle")
-                    element.classList.add("fa-minus-circle")
-                    answerEle.style.display = ""
-                }
-            })
-        })
     }
 
     startMerge(offlineTr,onlineTr,onlineDoc){
@@ -358,8 +263,6 @@ export class Merge{
             } 
         })
         this.mergeView2.dispatch(markTr)
-        
-        
         this.mergeDialog.close()
         const mergedDoc = this.mergeView2.state.doc
         //CleanUp
@@ -418,7 +321,7 @@ export class Merge{
             text: " Help ",
             classes: 'fw-orange',
             click: () => {
-                this.openHelpDialog()
+                this.mergeHelpDialog.open()
             }
         },{ 
             text: "Merge Complete",
@@ -440,10 +343,8 @@ export class Merge{
                             }
                         }]
                     }) 
-                    warningDialog.open()
-                    
+                    warningDialog.open() 
                 }
-                
             }
         }]
         const dialog = new Dialog({
@@ -457,44 +358,8 @@ export class Merge{
         return dialog
     }
 
-    updateMarkData(tr){
-        // Update the range inside the marks !!
-        const initialdiffMap = tr.getMeta('initialDiffMap')
-        if(!initialdiffMap && (tr.steps.length>0 || tr.docChanged)){
-            tr.doc.nodesBetween(
-                0,
-                tr.doc.content.size,
-                (node, pos) => {
-                    if (['bullet_list', 'ordered_list'].includes(node.type.name)) {
-                        return true
-                    } else if (node.isInline){
-                        let diffMark = node.marks.find(mark=>mark.type.name=="DiffMark")
-                        if(diffMark!== undefined){
-                            diffMark = diffMark.attrs
-                            tr.removeMark(pos,pos+node.nodeSize,tr.doc.type.schema.marks.DiffMark)
-                            const from = tr.mapping.map(diffMark.from)
-                            const to = tr.mapping.map(diffMark.to,-1)
-                            const mark = tr.doc.type.schema.marks.DiffMark.create({ diff:diffMark.diff,steps:diffMark.steps,from:from,to:to })
-                            tr.addMark(pos,pos+node.nodeSize,mark)
-                        }
-                    }
-                    if (node.attrs.diffdata && node.attrs.diffdata.length>0) {
-                        const diffdata = node.attrs.diffdata
-                        diffdata[0].from = tr.mapping.map(diffdata[0].from)
-                        diffdata[0].to = tr.mapping.map(diffdata[0].to)
-                        tr.setNodeMarkup(pos, null, Object.assign({}, node.attrs, {diffdata}), node.marks)
-                    }
-                }
-            )
-        }
-        return tr
-    }
-
     bindEditorView(elementId,doc){
         const editor = this.mod.editor
-        // Bind the plugins to the respective views
-        let orignal_plugins = this.mod.editor.statePlugins
-        orignal_plugins = orignal_plugins.filter((plugin,pos)=>pos!=16)
         const plugins = this.diffPlugin.map(plugin=>{
             if (plugin[1]) {
                 return plugin[0](plugin[1](doc))
@@ -515,7 +380,7 @@ export class Merge{
                     const notTrack = tr.getMeta('notrack')
                     if(!mapTracked)
                         this.mergedDocMap.appendMapping(tr.mapping)
-                    let mapTr = this.updateMarkData(tr)
+                    let mapTr = updateMarkData(tr)
                     if(!notTrack){ // Track only manual insertions
                         mapTr = trackedTransaction(
                             mapTr,
@@ -542,7 +407,7 @@ export class Merge{
                     plugins:plugins,
                 }),
                 dispatchTransaction: tr => {
-                    const mapTr = this.updateMarkData(tr)
+                    const mapTr = updateMarkData(tr)
                     const newState = editorView.state.apply(mapTr)
                     editorView.updateState(newState)
                     this.renderCitation(editorView,elementId)
@@ -555,7 +420,7 @@ export class Merge{
         return editorView 
     }
 
-    markChangesinDiffEditor(changeset,insertionView,deletionView,insertionClass,deletionClass,tr,trType){
+    markChangesinDiffEditor(changeset,insertionView,deletionView,insertionClass,deletionClass,tr){
         // Mark the insertions in insertion View & deletions in deletionView
         const insertionMarksTr = insertionView.state.tr
         const deletionMarksTr = deletionView.state.tr
@@ -586,7 +451,7 @@ export class Merge{
                 steps_involved.sort((a,b)=>a-b)
                 const insertionMark = this.mod.editor.schema.marks.DiffMark.create({diff:insertionClass,steps:JSON.stringify(steps_involved),from:change.fromB,to:change.toB})
                 insertionMarksTr.addMark(change.fromB,change.toB,insertionMark)
-                this.markImageDiffs(insertionMarksTr,change.fromB,change.toB,insertionClass,steps_involved)
+                this.markBlockDiffs(insertionMarksTr,change.fromB,change.toB,insertionClass,steps_involved)
                 stepsTrackedByChangeset=stepsTrackedByChangeset.concat(steps_involved)
             } if (change.deleted.length>0){
                 let steps_involved = []
@@ -596,7 +461,7 @@ export class Merge{
                 steps_involved.sort((a,b)=>a-b)
                 const deletionMark = this.mod.editor.schema.marks.DiffMark.create({diff:deletionClass,steps:JSON.stringify(steps_involved),from:change.fromA,to:change.toA})
                 deletionMarksTr.addMark(change.fromA,change.toA,deletionMark)
-                this.markImageDiffs(deletionMarksTr,change.fromA,change.toA,deletionClass,steps_involved)
+                this.markBlockDiffs(deletionMarksTr,change.fromA,change.toA,deletionClass,steps_involved)
                 stepsTrackedByChangeset=stepsTrackedByChangeset.concat(steps_involved)
             }
         })
@@ -619,9 +484,9 @@ export class Merge{
                 }
                 else if (Step1.slice && Step1.slice.content.length == 1 && Step1.slice.content[0].type === "figure"){
                     if(Step1.from == Step1.to){
-                        this.markImageDiffs(insertionMarksTr,Step1.from,Step1.to+1,insertionClass,[index])
+                        this.markBlockDiffs(insertionMarksTr,Step1.from,Step1.to+1,insertionClass,[index])
                     } else {
-                        this.markImageDiffs(insertionMarksTr,Step1.from,Step1.to,insertionClass,[index])
+                        this.markBlockDiffs(insertionMarksTr,Step1.from,Step1.to,insertionClass,[index])
                     }
                     stepsTrackedByChangeset.push(index)
                 }
@@ -696,41 +561,25 @@ export class Merge{
         return newTr
     }
 
-    unHideSections(){
+    unHideSections(view){
         let offset = 1,attrs
-        const offlineTr = this.mergeView1.state.tr
-        this.mergeView1.state.doc.firstChild.forEach((child, docNodeOffset, index) => {
+        const unHideSectionTr = view.state.tr
+        view.state.doc.firstChild.forEach((child, docNodeOffset, index) => {
             if (child.attrs.optional) {
                 offset += docNodeOffset
                 attrs = Object.assign({}, child.attrs)
                 attrs.hidden = false
-                offlineTr.setNodeMarkup(offset, false, attrs).setMeta('settings', true)
+                unHideSectionTr.setNodeMarkup(offset, false, attrs).setMeta('settings', true)
                 offset = 1
             }
         })
-        const commonDocTr = this.mergeView2.state.tr
-        this.mergeView2.state.doc.firstChild.forEach((child, docNodeOffset, index) => {
-            if (child.attrs.optional) {
-                offset += docNodeOffset
-                attrs = Object.assign({}, child.attrs)
-                attrs.hidden = false
-                commonDocTr.setNodeMarkup(offset, false, attrs).setMeta('settings', true)
-                offset = 1
-            }
-        })
-        const onlineTr = this.mergeView3.state.tr
-        this.mergeView3.state.doc.firstChild.forEach((child, docNodeOffset, index) => {
-            if (child.attrs.optional) {
-                offset += docNodeOffset
-                attrs = Object.assign({}, child.attrs)
-                attrs.hidden = false
-                onlineTr.setNodeMarkup(offset, false, attrs).setMeta('settings', true)
-                offset = 1
-            }
-        })
-        this.mergeView1.dispatch(offlineTr)
-        this.mergeView2.dispatch(commonDocTr)
-        this.mergeView3.dispatch(onlineTr)
+        view.dispatch(unHideSectionTr)
+    }
+
+    unHideSectionsinAllDoc(){
+        this.unHideSections(this.mergeView1)
+        this.unHideSections(this.mergeView2)
+        this.unHideSections(this.mergeView3)
     }
 
     openDiffEditors(cpDoc,offlineDoc,onlineDoc,offlineTr,onlineTr){
@@ -739,6 +588,7 @@ export class Merge{
 
         this.mergeDialog  = this.createMergeDialog(offlineTr,onlineTr,onlineDoc)
         this.mergeDialog.open()
+        this.mergeHelpDialog = new mergeHelpDialog()
         onlineTr = this.modifyTr(onlineTr)
         offlineTr = this.modifyTr(offlineTr)
         this.offlineTr = offlineTr
@@ -750,13 +600,14 @@ export class Merge{
         this.mergeView2 = this.bindEditorView('editor-diff',cpDoc)
         this.mergeView3 = this.bindEditorView('editor-diff-2',onlineDoc)
         
-        const offlineChangeset = this.changeSet(offlineTr)
-        const onlineChangeset = this.changeSet(onlineTr)
+        const offlineChangeset = new changeSet(offlineTr).getChangeSet()
+        const onlineChangeset = new changeSet(onlineTr).getChangeSet()
 
-        this.unHideSections()
+        // Unhide All Sections in All the 3 views
+        this.unHideSectionsinAllDoc()
 
-        const offlineTrackedSteps = this.markChangesinDiffEditor(offlineChangeset,this.mergeView1,this.mergeView2,"offline-inserted","offline-deleted",offlineTr,"offline")
-        const onlineTrackedSteps = this.markChangesinDiffEditor(onlineChangeset,this.mergeView3,this.mergeView2,"online-inserted","online-deleted",onlineTr,"online")
+        const offlineTrackedSteps = this.markChangesinDiffEditor(offlineChangeset,this.mergeView1,this.mergeView2,"offline-inserted","offline-deleted",offlineTr)
+        const onlineTrackedSteps = this.markChangesinDiffEditor(onlineChangeset,this.mergeView3,this.mergeView2,"online-inserted","online-deleted",onlineTr)
 
         if(this.mergeView1.state.doc.firstChild.attrs.tracked || this.mergeView3.state.doc.firstChild.attrs.tracked ){
             const article = this.mergeView2.state.doc.firstChild

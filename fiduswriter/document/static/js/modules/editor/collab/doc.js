@@ -30,7 +30,10 @@ import {
 } from "./recreate_transform"
 import { 
     Merge
- } from "./merge"
+} from "./merge"
+import {
+    changeSet
+} from "./changeset"
 
 export class ModCollabDoc {
     constructor(mod) {
@@ -105,7 +108,7 @@ export class ModCollabDoc {
     adjustDocument(data) {
         // Adjust the document when reconnecting after offline and many changes
         // happening on server.
-        if (this.mod.editor.docInfo.version < data.doc.v) {
+        if (this.mod.editor.docInfo.version < data.doc.v && sendableSteps(this.mod.editor.view.state)) {
             this.receiving = true
             this.mod.editor.docInfo.confirmedJson = JSON.parse(JSON.stringify(data.doc.contents))
             const confirmedState = EditorState.create({doc: this.mod.editor.docInfo.confirmedDoc})
@@ -138,7 +141,8 @@ export class ModCollabDoc {
                 lostTr.steps.map(_step => 'remote')
             ).setMeta('remote', true))
             
-            const conflicts = this.merge.findConflicts(unconfirmedTr,lostTr)
+            const lostChangeSet = new changeSet(lostTr)
+            const conflicts = lostChangeSet.findConflicts(unconfirmedTr,lostTr)
             // Set the version
             this.mod.editor.docInfo.version = data.doc.v
 
