@@ -243,9 +243,9 @@ export const figure = {
         if (node.attrs.track && node.attrs.track.length) {
             dom.dataset.track = JSON.stringify(node.attrs.track)
         }
-        if(node.attrs.diffdata && node.attrs.diffdata.length){
-            dom.dataset.diffdata = JSON.stringify(node.attrs.diffdata)  
-            dom.classList.add(node.attrs.diffdata[0].type)  
+        if (node.attrs.diffdata && node.attrs.diffdata.length) {
+            dom.dataset.diffdata = JSON.stringify(node.attrs.diffdata)
+            dom.classList.add(node.attrs.diffdata[0].type)
         }
         if (node.attrs.image !== false) {
             dom.appendChild(document.createElement("div"))
@@ -348,7 +348,7 @@ const createHeading = level => ({
     toDOM(node) {
         const attrs = {id: node.attrs.id}
         addTracks(node, attrs)
-        addDiffs(node,attrs)
+        addDiffs(node, attrs)
         return [`h${level}`, attrs, 0]
     }
 })
@@ -471,7 +471,8 @@ export const paragraph = {
     }}}],
     toDOM(node) {
         const attrs = node.attrs.track && node.attrs.track.length ? {'data-track': JSON.stringify(node.attrs.track)} : {}
-        node.attrs.diffdata ? addDiffs(node,attrs) : null
+        if (node.attrs.diffdata)
+            addDiffs(node, attrs)
         return ['p', attrs, 0]
     }
 }
@@ -496,7 +497,8 @@ export const blockquote = {
     }}}],
     toDOM(node) {
         const attrs = node.attrs.track && node.attrs.track.length ? {'data-track': JSON.stringify(node.attrs.track)} : {}
-        node.attrs.diffdata ? addDiffs(node,attrs) : null
+        if (node.attrs.diffdata)
+            addDiffs(node, attrs)
         return ["blockquote", attrs, 0]
     }
 }
@@ -518,7 +520,8 @@ export const horizontal_rule = {
     }}}],
     toDOM(node) {
         const attrs = node.attrs.track && node.attrs.track.length ? {'data-track': JSON.stringify(node.attrs.track)} : {}
-        node.attrs.diffdata ? addDiffs(node,attrs) : null
+        if (node.attrs.diffdata)
+            addDiffs(node, attrs)
         return ["hr", attrs]
     }
 }
@@ -577,7 +580,7 @@ export const ordered_list = {
             attrs.start = node.attrs.order
         }
         addTracks(node, attrs)
-        addDiffs(node,attrs)
+        addDiffs(node, attrs)
         return ["ol", attrs, 0]
     }
 }
@@ -589,7 +592,7 @@ export const bullet_list = {
     content: "list_item+",
     attrs: {
         track: {default: []},
-        diffdata: { default: []}
+        diffdata: {default: []}
     },
     parseDOM: [{tag: "ul", getAttrs(dom) {
         return {
@@ -600,7 +603,7 @@ export const bullet_list = {
     toDOM(node) {
         const attrs = {}
         addTracks(node, attrs)
-        addDiffs(node,attrs)
+        addDiffs(node, attrs)
         return ["ul", attrs, 0]
     }
 }
@@ -623,7 +626,7 @@ export const list_item = {
     toDOM(node) {
         const attrs = {}
         addTracks(node, attrs)
-        addDiffs(node,attrs)
+        addDiffs(node, attrs)
         return ["li", attrs, 0]
     },
     defining: true

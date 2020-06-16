@@ -28,7 +28,7 @@ import {
 import {
     recreateTransform
 } from "./recreate_transform"
-import { 
+import {
     Merge
 } from "./merge"
 import {
@@ -140,19 +140,18 @@ export class ModCollabDoc {
                 lostTr.steps,
                 lostTr.steps.map(_step => 'remote')
             ).setMeta('remote', true))
-            
+
             const lostChangeSet = new changeSet(lostTr)
-            const conflicts = lostChangeSet.findConflicts(unconfirmedTr,lostTr)
+            const conflicts = lostChangeSet.findConflicts(unconfirmedTr, lostTr)
             // Set the version
             this.mod.editor.docInfo.version = data.doc.v
 
-            this.merge.diffMerge(confirmedState.doc,unconfirmedTr.doc,toDoc,unconfirmedTr,lostTr,data)
             // If no conflicts arises auto-merge the document
-            // if(conflicts.length>0){
-            //     this.merge.diffMerge(confirmedState.doc,unconfirmedTr.doc,toDoc,unconfirmedTr,lostTr,data)
-            // } else {
-            //     this.merge.autoMerge(unconfirmedTr,lostTr,data)
-            // }   
+            if (conflicts.length>0) {
+                this.merge.diffMerge(confirmedState.doc, unconfirmedTr.doc, toDoc, unconfirmedTr, lostTr, data)
+            } else {
+                this.merge.autoMerge(unconfirmedTr, lostTr, data)
+            }
 
             this.receiving = false
             // this.sendToCollaborators()
@@ -291,10 +290,6 @@ export class ModCollabDoc {
                     )
                     // We add a json diff in a format understandable by the
                     // server.
-                    console.log("Confirmed JSON",this.mod.editor.docInfo.confirmedJson)
-                    console.log("The Other ONE!",toMiniJSON(
-                        this.mod.editor.view.state.doc.firstChild
-                    ))
                     unconfirmedDiff['jd'] = compare(
                         this.mod.editor.docInfo.confirmedJson,
                         toMiniJSON(
@@ -421,7 +416,6 @@ export class ModCollabDoc {
     }
 
     receiveFromCollaborators(data) {
-        console.log("Server",data)
 
         this.mod.editor.docInfo.version++
         if (data["bu"]) { // bibliography updates

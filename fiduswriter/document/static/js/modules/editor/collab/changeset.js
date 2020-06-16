@@ -6,7 +6,7 @@ import {
 } from "prosemirror-transform"
 
 export class changeSet {
-    constructor(tr){
+    constructor(tr) {
         this.tr = tr
     }
 
@@ -15,13 +15,13 @@ export class changeSet {
     }
 
     findConflicts(tr1, tr2) {
-        let changes1 , changes2 , conflicts = []
-        changes1 = this.findContentChanges(tr1)
-        changes2 = this.findContentChanges(tr2)
+        const conflicts = []
+        const changes1 = this.findContentChanges(tr1)
+        const changes2 = this.findContentChanges(tr2)
         changes1.deletedsteps.forEach(deleted => {
             changes2.insertedsteps.forEach(inserted => {
                 if (inserted.pos >= deleted.from && inserted.pos <= deleted.to) {
-                    conflicts.push([deleted.data.step,"deletion",inserted.data.step,"insertion"])
+                    conflicts.push([deleted.data.step, "deletion", inserted.data.step, "insertion"])
                 }
             })
         })
@@ -29,7 +29,7 @@ export class changeSet {
         changes2.deletedsteps.forEach(deleted => {
             changes1.insertedsteps.forEach(inserted => {
                 if (inserted.pos >= deleted.from && inserted.pos <= deleted.to) {
-                    conflicts.push([inserted.data.step,"insertion",deleted.data.step,"deletion"])
+                    conflicts.push([inserted.data.step, "insertion", deleted.data.step, "deletion"])
                 }
             })
         })
@@ -46,16 +46,16 @@ export class changeSet {
         const invertedMapping = new Mapping()
         invertedMapping.appendMappingInverted(tr.mapping)
 
-        const insertedsteps = [] , deletedsteps = [] ,ins = [],del = []
+        const insertedsteps = [], deletedsteps = [], ins = [], del = []
         changes.changes.forEach(change=>{
             change.inserted.forEach(inserted=>{
-                if(!ins.includes(inserted.data.step)){
-                    insertedsteps.push({pos: invertedMapping.map(change.fromB), data: inserted.data })
+                if (!ins.includes(inserted.data.step)) {
+                    insertedsteps.push({pos: invertedMapping.map(change.fromB), data: inserted.data})
                     ins.push(inserted.data.step)
                 }
             })
             change.deleted.forEach(deleted=>{
-                if(!del.includes(deleted.data.step)){
+                if (!del.includes(deleted.data.step)) {
                     del.push(deleted.data.step)
                     deletedsteps.push({from: change.fromA, to: change.toA, data: deleted.data})
                 }
@@ -64,7 +64,7 @@ export class changeSet {
         return {insertedsteps, deletedsteps}
     }
 
-    getChangeSet(){
+    getChangeSet() {
         const tr = this.tr
         const doc = this.trDoc(tr)
         let changes = ChangeSet.create(doc)

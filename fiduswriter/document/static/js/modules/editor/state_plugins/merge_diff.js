@@ -1,29 +1,29 @@
-import {Plugin, PluginKey , TextSelection, NodeSelection} from "prosemirror-state"
-import {Decoration, DecorationSet , __serializeForClipboard} from "prosemirror-view"
+import {Plugin, PluginKey, TextSelection, NodeSelection} from "prosemirror-state"
+import {Decoration, DecorationSet, __serializeForClipboard} from "prosemirror-view"
 import {noSpaceTmp, showSystemMessage} from "../../common"
-import { Mapping } from "prosemirror-transform"
+import {Mapping} from "prosemirror-transform"
 
 const key = new PluginKey('mergeDiff')
 
-export const updateMarkData = function(tr){
+export const updateMarkData = function(tr) {
     // Update the range inside the marks !!
     const initialdiffMap = tr.getMeta('initialDiffMap')
-    if(!initialdiffMap && (tr.steps.length>0 || tr.docChanged)){
+    if (!initialdiffMap && (tr.steps.length>0 || tr.docChanged)) {
         tr.doc.nodesBetween(
             0,
             tr.doc.content.size,
             (node, pos) => {
                 if (['bullet_list', 'ordered_list'].includes(node.type.name)) {
                     return true
-                } else if (node.isInline){
+                } else if (node.isInline) {
                     let diffMark = node.marks.find(mark=>mark.type.name=="DiffMark")
-                    if(diffMark!== undefined){
+                    if (diffMark!== undefined) {
                         diffMark = diffMark.attrs
-                        tr.removeMark(pos,pos+node.nodeSize,tr.doc.type.schema.marks.DiffMark)
+                        tr.removeMark(pos, pos+node.nodeSize, tr.doc.type.schema.marks.DiffMark)
                         const from = tr.mapping.map(diffMark.from)
-                        const to = tr.mapping.map(diffMark.to,-1)
-                        const mark = tr.doc.type.schema.marks.DiffMark.create({ diff:diffMark.diff,steps:diffMark.steps,from:from,to:to })
-                        tr.addMark(pos,pos+node.nodeSize,mark)
+                        const to = tr.mapping.map(diffMark.to, -1)
+                        const mark = tr.doc.type.schema.marks.DiffMark.create({diff:diffMark.diff, steps:diffMark.steps, from:from, to:to})
+                        tr.addMark(pos, pos+node.nodeSize, mark)
                     }
                 }
                 if (node.attrs.diffdata && node.attrs.diffdata.length>0) {
@@ -38,7 +38,7 @@ export const updateMarkData = function(tr){
     return tr
 }
 
-export const removeMarks = function(view,from,to,mark,returnTr=false){
+export const removeMarks = function(view, from, to, mark, returnTr=false) {
     const trackedTr = view.state.tr
     trackedTr.doc.nodesBetween(
         from,
@@ -55,12 +55,12 @@ export const removeMarks = function(view,from,to,mark,returnTr=false){
             }
         }
     )
-    trackedTr.removeMark(from,to,mark)
-    if(returnTr){
+    trackedTr.removeMark(from, to, mark)
+    if (returnTr) {
         return trackedTr
     }
-    trackedTr.setMeta('initialDiffMap',true).setMeta('mapTracked',true)
-    trackedTr.setMeta('notrack',true)
+    trackedTr.setMeta('initialDiffMap', true).setMeta('mapTracked', true)
+    trackedTr.setMeta('notrack', true)
     view.dispatch(trackedTr)
 }
 
@@ -70,10 +70,10 @@ export const diffPlugin = function(options) {
         let markFound = state.selection.$head.marks().find(mark =>
             mark.type.name === 'DiffMark')
 
-        if(markFound === undefined){
+        if (markFound === undefined) {
             markFound = {}
             const node = state.selection.$head.nodeBefore
-            if(node  && node.attrs.diffdata && node.attrs.diffdata.length>0){
+            if (node  && node.attrs.diffdata && node.attrs.diffdata.length>0) {
                 markFound['diff'] = node.attrs.diffdata[0].type
                 markFound['attrs'] = {}
                 markFound['attrs']['diff'] = node.attrs.diffdata[0].type
@@ -85,8 +85,8 @@ export const diffPlugin = function(options) {
         return markFound
     }
 
-    function createHiglightDecoration(from,to,state){
-        const inlineDeco = Decoration.inline(from,to,{class:'selected-dec'})
+    function createHiglightDecoration(from, to, state) {
+        const inlineDeco = Decoration.inline(from, to, {class:'selected-dec'})
         const deco = []
         deco.push(inlineDeco)
         state.doc.nodesBetween(
@@ -99,7 +99,7 @@ export const diffPlugin = function(options) {
                     return false
                 }
                 if (node && node.attrs.diffdata && node.attrs.diffdata.length>0) {
-                    deco.push(Decoration.node(pos,pos+node.nodeSize,{class:'selected-dec'},{}))
+                    deco.push(Decoration.node(pos, pos+node.nodeSize, {class:'selected-dec'}, {}))
                 }
             }
         )
@@ -114,98 +114,98 @@ export const diffPlugin = function(options) {
             )
         const linkMark = $head.marks().find(
             mark => mark.type.name === 'link'
-        ) 
+        )
         if (diffMark) {
             currentMarks.push(diffMark)
         }
         if (!currentMarks.length) {
             const node = state.selection instanceof NodeSelection ? state.selection.node : state.selection.$head.parent
-            let markFound = {}
-            if(node && node.attrs.diffdata && node.attrs.diffdata.length>0){
+            const markFound = {}
+            if (node && node.attrs.diffdata && node.attrs.diffdata.length>0) {
                 markFound['image'] = true
                 markFound['attrs'] = {}
                 markFound['attrs']['diff'] = node.attrs.diffdata[0].type
                 markFound['attrs']['from'] = node.attrs.diffdata[0].from
                 markFound['attrs']['to'] = node.attrs.diffdata[0].to
                 markFound['attrs']['steps'] = JSON.stringify(node.attrs.diffdata[0].steps)
-                let startPos = $head.pos// position of block start.
+                const startPos = $head.pos// position of block start.
                 const dom = createDropUp(markFound),
-                deco = Decoration.widget(startPos,dom)
-                let highlightDecos = createHiglightDecoration(markFound['attrs']["from"],markFound['attrs']["to"],state)
+                deco = Decoration.widget(startPos, dom)
+                const highlightDecos = createHiglightDecoration(markFound['attrs']["from"], markFound['attrs']["to"], state)
                 highlightDecos.push(deco)
-                return DecorationSet.create(state.doc,highlightDecos)
+                return DecorationSet.create(state.doc, highlightDecos)
             }
             return DecorationSet.empty
         }
         const startPos = diffMark.attrs.to
-        const dom = createDropUp(diffMark,linkMark),
-            deco = Decoration.widget(startPos,dom)
-        let highlightDecos = createHiglightDecoration(diffMark.attrs.from,diffMark.attrs.to,state)
+        const dom = createDropUp(diffMark, linkMark),
+            deco = Decoration.widget(startPos, dom)
+        const highlightDecos = createHiglightDecoration(diffMark.attrs.from, diffMark.attrs.to, state)
         highlightDecos.push(deco)
-        return DecorationSet.create(state.doc,highlightDecos)
+        return DecorationSet.create(state.doc, highlightDecos)
     }
 
-    function acceptChanges(mark,editor,mergeView,originalView,tr,trType){
+    function acceptChanges(mark, editor, mergeView, originalView, tr) {
         try {
             const mergedDocMap = editor.mod.collab.doc.merge.mergedDocMap
             let insertionTr = mergeView.state.tr
             const from = mark.attrs.from
             const to = mark.attrs.to
             const steps = JSON.parse(mark.attrs.steps)
-            let stepMaps = tr.mapping.maps.slice().reverse().map(map=>map.invert())
-            let rebasedMapping = new Mapping(stepMaps)
+            const stepMaps = tr.mapping.maps.slice().reverse().map(map=>map.invert())
+            const rebasedMapping = new Mapping(stepMaps)
             rebasedMapping.appendMapping(mergedDocMap)
-            for(let stepIndex of steps){
+            for (const stepIndex of steps) {
                 const maps = rebasedMapping.slice(tr.steps.length-stepIndex)
                 const mappedStep = tr.steps[stepIndex].map(maps)
-                if(mappedStep && !insertionTr.maybeStep(mappedStep).failed){
+                if (mappedStep && !insertionTr.maybeStep(mappedStep).failed) {
                     mergedDocMap.appendMap(mappedStep.getMap())
                     rebasedMapping.appendMap(mappedStep.getMap())
-                    rebasedMapping.setMirror(tr.steps.length-stepIndex-1,(tr.steps.length+mergedDocMap.maps.length-1))
+                    rebasedMapping.setMirror(tr.steps.length-stepIndex-1, (tr.steps.length+mergedDocMap.maps.length-1))
                 }
             }
             // Make sure that all the content steps are present in the new transaction
-            if(insertionTr.steps.length < steps.length){
+            if (insertionTr.steps.length < steps.length) {
                 showSystemMessage(gettext("The change could not be applied automatically.Please consider using the copy option to copy the changes."))
             } else {
                 // Remove the diff mark.If we're looking at view2 it means we're deleting content for which we dont have to remove the marks seperately we can put both of the steps into a single transaction
-                if(originalView === mergeView){
-                    let markRemovalTr = removeMarks(originalView,from,to,editor.schema.marks.DiffMark,true)
+                if (originalView === mergeView) {
+                    const markRemovalTr = removeMarks(originalView, from, to, editor.schema.marks.DiffMark, true)
                     insertionTr.steps.forEach(step => markRemovalTr.step(step))
                     insertionTr = markRemovalTr
                 } else {
-                    removeMarks(originalView,from,to,editor.schema.marks.DiffMark)
+                    removeMarks(originalView, from, to, editor.schema.marks.DiffMark)
                 }
-                insertionTr.setMeta('mapTracked',true)
-                insertionTr.setMeta('notrack',true)
+                insertionTr.setMeta('mapTracked', true)
+                insertionTr.setMeta('notrack', true)
                 mergeView.dispatch(insertionTr)
             }
-        } catch(exc){
+        } catch (exc) {
             showSystemMessage(gettext("The change could not be applied automatically.Please consider using the copy option to copy the changes."))
         }
     }
 
-    function rejectChanges(view,diffMark,editor){
-        removeMarks(view,diffMark.attrs.from,diffMark.attrs.to,editor.schema.marks.DiffMark)
+    function rejectChanges(view, diffMark, editor) {
+        removeMarks(view, diffMark.attrs.from, diffMark.attrs.to, editor.schema.marks.DiffMark)
     }
 
-    function copyChange(view,from,to){
+    function copyChange(view, from, to) {
         const tr = view.state.tr
         const resolvedFrom = view.state.doc.resolve(from)
         const resolvedTo = view.state.doc.resolve(to)
-        const sel = new TextSelection(resolvedFrom,resolvedTo)
+        const sel = new TextSelection(resolvedFrom, resolvedTo)
         sel.visible = false
         tr.setSelection(sel)
         view.dispatch(tr)
-        
+
         const slice = view.state.selection.content()
-        const {dom,text} = (__serializeForClipboard(view,slice))
+        const {dom} = (__serializeForClipboard(view, slice))
 
         // Copy data to clipboard!!
         document.body.appendChild(dom)
-        var range = document.createRange();
-        range.selectNode(dom);
-        window.getSelection().addRange(range);
+        const range = document.createRange()
+        range.selectNode(dom)
+        window.getSelection().addRange(range)
         try {
             document.execCommand("copy") // Security exception may be thrown by some browsers.
             document.body.removeChild(dom)
@@ -215,23 +215,22 @@ export const diffPlugin = function(options) {
                 'Copy to clipboard failed. Please copy manually.'
             ))
         }
-        window.getSelection().removeAllRanges();
+        window.getSelection().removeAllRanges()
     }
 
-    function createDropUp(diffMark,linkMark) {
+    function createDropUp(diffMark, linkMark) {
         const dropUp = document.createElement('span'),
-        editor = options.editor,requiredPx=10,
+        editor = options.editor, requiredPx=10,
         tr = diffMark.attrs.diff.search('offline') != -1 ? editor.mod.collab.doc.merge.offlineTr : editor.mod.collab.doc.merge.onlineTr
-        const trType = diffMark.attrs.diff.search('offline') != -1 ? "offline" : "online"
         let view
-        if(diffMark.attrs.diff.search('offline') != -1){
-            if(diffMark.attrs.diff.search('inserted') != -1){
+        if (diffMark.attrs.diff.search('offline') != -1) {
+            if (diffMark.attrs.diff.search('inserted') != -1) {
                 view = editor.mod.collab.doc.merge.mergeView1
             } else {
                 view = editor.mod.collab.doc.merge.mergeView2
             }
         } else {
-            if(diffMark.attrs.diff.search('inserted') != -1){
+            if (diffMark.attrs.diff.search('inserted') != -1) {
                 view = editor.mod.collab.doc.merge.mergeView3
             } else {
                 view = editor.mod.collab.doc.merge.mergeView2
@@ -277,7 +276,7 @@ export const diffPlugin = function(options) {
                 event => {
                     event.preventDefault()
                     event.stopImmediatePropagation()
-                    acceptChanges(diffMark,editor,editor.mod.collab.doc.merge.mergeView2,view,tr,trType)
+                    acceptChanges(diffMark, editor, editor.mod.collab.doc.merge.mergeView2, view, tr)
                 }
             )
         }
@@ -287,7 +286,7 @@ export const diffPlugin = function(options) {
                 () => {
                     event.preventDefault()
                     event.stopImmediatePropagation()
-                    rejectChanges(view,diffMark,editor)
+                    rejectChanges(view, diffMark, editor)
                 }
             )
         }
@@ -298,7 +297,7 @@ export const diffPlugin = function(options) {
                 event => {
                     event.preventDefault()
                     event.stopImmediatePropagation()
-                    copyChange(view,diffMark.attrs.from,diffMark.attrs.to)
+                    copyChange(view, diffMark.attrs.from, diffMark.attrs.to)
                 }
             )
         }
@@ -340,18 +339,18 @@ export const diffPlugin = function(options) {
                 return decos
             }
         },
-        view(_view){
+        view(_view) {
             return {
                 update:(view)=>{
                     // Make sure that pop stays inside the view.
                     const changePopUp = view.dom.querySelector('.drop-up-outer')
-                    if(changePopUp){
+                    if (changePopUp) {
                         const bounding = changePopUp.getBoundingClientRect()
-                        if(bounding.right > (window.innerWidth || document.documentElement.clientWidth)){
+                        if (bounding.right > (window.innerWidth || document.documentElement.clientWidth)) {
                             changePopUp.style.left = '100px'
                         }
                     }
-                }  
+                }
             }
         }
     })

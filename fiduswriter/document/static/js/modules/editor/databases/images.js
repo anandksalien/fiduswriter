@@ -82,13 +82,13 @@ export class ModImageDB {
                 this.setImage(id, this.mod.editor.app.imageDB.db[id])
             } else {
                 // If image is not present in both the userImage DB and docDB we can safely assume that we have to upload again.
-                this.reUploadImage(id,this.db[id].image,this.db[id].title,this.db[id].copyright).then(({id,new_id})=>delete this.db[id])
+                this.reUploadImage(id, this.db[id].image, this.db[id].title, this.db[id].copyright).then(({id, _new_id})=>delete this.db[id])
             }
         }
     }
 
-    reUploadImage(id,image_url,title,copyright) {
-        let new_promise = new Promise((resolve,reject)=>{
+    reUploadImage(id, image_url, title, copyright) {
+        const new_promise = new Promise((resolve, _reject)=>{
             // Depends on the fact that service worker is working and cached the image basically.
             get(image_url).then(
                 response=>response.blob()
@@ -110,11 +110,11 @@ export class ModImageDB {
                                     this.mod.editor.view.dispatch(transaction)
                                 }
                             })
-                            resolve({id:id,new_id:new_id})
+                            resolve({id:id, new_id:new_id})
                         }
                     )
                 }
-            )            
+            )
         })
         return new_promise
     }

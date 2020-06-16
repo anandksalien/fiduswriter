@@ -9,7 +9,7 @@ import {
     trackedTransaction
 } from "../track"
 export class FootnoteView {
-    constructor(node, view, getPos ,editor) {
+    constructor(node, view, getPos, editor) {
         // We'll need these later
         this.node = node
         this.outerView = view
@@ -38,13 +38,13 @@ export class FootnoteView {
 
     open() {
         // Append a tooltip to the outer node
-        let tooltip = this.dom.appendChild(document.createElement("div"))
+        const tooltip = this.dom.appendChild(document.createElement("div"))
         tooltip.className = "footnote-tooltip"
         const diffMark = this.node.marks.find(mark => mark.type.name === 'DiffMark')
-        if(diffMark === undefined) {
+        if (diffMark === undefined) {
             tooltip.classList.add('render-arrow')
         } else {
-            tooltip.style.top = '-30px';
+            tooltip.style.top = '-30px'
         }
 
         const doc = fnSchema.nodeFromJSON({
@@ -70,10 +70,10 @@ export class FootnoteView {
     }
 
     close() {
-        if(!this.updatedMainEditor && this.outerView){
+        if (!this.updatedMainEditor && this.outerView) {
             this.updateMainEditor()
         }
-        if(this.innerView){
+        if (this.innerView) {
             this.innerView.destroy()
             this.innerView = null
             this.dom.textContent = ""
@@ -81,18 +81,18 @@ export class FootnoteView {
         }
     }
 
-    updateMainEditor(){
-        let outerTr = this.outerView.state.tr
+    updateMainEditor() {
+        const outerTr = this.outerView.state.tr
         const footnoteContent = this.innerView.state.doc.child(0).toJSON().content
         const pos = this.getPos()
         const node = outerTr.doc.nodeAt(pos)
-        if(node){
+        if (node) {
             outerTr.setNodeMarkup(pos, node.type, {
                 footnote: footnoteContent
             })
         }
         if (outerTr.docChanged) {
-            outerTr.setMeta('fromFootnote',true)
+            outerTr.setMeta('fromFootnote', true)
             this.updatedMainEditor = true
             this.outerView.dispatch(outerTr)
         }
@@ -106,9 +106,8 @@ export class FootnoteView {
             !this.outerView.state.doc.firstChild.attrs.tracked && this.editor.docInfo.access_rights !== 'write-tracked',
             Date.now() - this.editor.clientTimeAdjustment
         )
-        let {
-            state,
-            transactions
+        const {
+            state
         } = this.innerView.state.applyTransaction(trackedTr)
         this.innerView.updateState(state)
     }
