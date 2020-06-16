@@ -7,25 +7,25 @@ function parseReferences(str) {
     try {
         references = JSON.parse(str)
     } catch (error) {
-       return []
-   }
-   if (!Array.isArray(references)) {
-       return []
-   }
-   return references.filter(
-       ref => ref.hasOwnProperty('id') // ensure there is an id.
-   ).map(
-       ref => {
-           const mRef = {id:ref.id}
-           if (ref.locator) {
-               mRef.locator = ref.locator
-           }
-           if (ref.prefix) {
-               mRef.prefix = ref.prefix
-           }
-           return mRef
-       }
-   )
+        return []
+    }
+    if (!Array.isArray(references)) {
+        return []
+    }
+    return references.filter(
+        ref => ref.hasOwnProperty('id') // ensure there is an id.
+    ).map(
+        ref => {
+            const mRef = {id:ref.id}
+            if (ref.locator) {
+                mRef.locator = ref.locator
+            }
+            if (ref.prefix) {
+                mRef.prefix = ref.prefix
+            }
+            return mRef
+        }
+    )
 }
 
 export const citation = {
@@ -116,7 +116,7 @@ export const cross_reference = {
 }
 
 export function randomFigureId() {
-    return 'F' + Math.round(Math.random()*10000000) + 1
+    return 'F' + Math.round(Math.random() * 10000000) + 1
 }
 
 
@@ -156,7 +156,7 @@ export function parseDiff(str) {
 }
 
 function addTracks(node, attrs) {
-    if (node.attrs.track && node.attrs.track.length) {
+    if (node.attrs.track?.length) {
         attrs['data-track'] = JSON.stringify(node.attrs.track)
     }
 }
@@ -213,34 +213,34 @@ export const figure = {
         dom.dataset.width = node.attrs.width
 
         switch (node.attrs.aligned) {
-            case 'right':
-                dom.classList.add('aligned-right')
-                break
-            case 'left':
-                dom.classList.add('aligned-left')
-                break
-            case 'center':
-                dom.classList.add('aligned-center')
-                break
-            default:
-                dom.classList.add('aligned-center')
+        case 'right':
+            dom.classList.add('aligned-right')
+            break
+        case 'left':
+            dom.classList.add('aligned-left')
+            break
+        case 'center':
+            dom.classList.add('aligned-center')
+            break
+        default:
+            dom.classList.add('aligned-center')
         }
 
-         switch (node.attrs.width) {
-            case '100':
-                dom.classList.add('image-width-100')
-                break
-            case '75':
-                dom.classList.add('image-width-75')
-                break
-            case '50':
-                dom.classList.add('image-width-50')
-                break
-            default:
-                dom.classList.add('image-width-25')
+        switch (node.attrs.width) {
+        case '100':
+            dom.classList.add('image-width-100')
+            break
+        case '75':
+            dom.classList.add('image-width-75')
+            break
+        case '50':
+            dom.classList.add('image-width-50')
+            break
+        default:
+            dom.classList.add('image-width-25')
         }
 
-        if (node.attrs.track && node.attrs.track.length) {
+        if (node.attrs.track?.length) {
             dom.dataset.track = JSON.stringify(node.attrs.track)
         }
         if(node.attrs.diffdata && node.attrs.diffdata.length){
@@ -250,8 +250,7 @@ export const figure = {
         if (node.attrs.image !== false) {
             dom.appendChild(document.createElement("div"))
             if (node.type.schema.cached.imageDB) {
-                if (node.type.schema.cached.imageDB.db[node.attrs.image] &&
-                    node.type.schema.cached.imageDB.db[node.attrs.image].image) {
+                if (node.type.schema.cached.imageDB.db[node.attrs.image]?.image) {
                     const imgSrc = node.type.schema.cached.imageDB.db[node.attrs.image].image
                     const img = document.createElement("img")
                     img.setAttribute('src', imgSrc)
@@ -264,8 +263,7 @@ export const figure = {
                     found. */
                     if (!imageDBBroken) {
                         node.type.schema.cached.imageDB.getDB().then(() => {
-                            if (node.type.schema.cached.imageDB.db[node.attrs.image] &&
-                                node.type.schema.cached.imageDB.db[node.attrs.image].image) {
+                            if (node.type.schema.cached.imageDB.db[node.attrs.image]?.image) {
                                 const imgSrc = node.type.schema.cached.imageDB.db[node.attrs.image].image
                                 const img = document.createElement("img")
                                 img.setAttribute('src', imgSrc)
@@ -313,7 +311,7 @@ export const figure = {
 }
 
 export const randomHeadingId = () => {
-    return `H${Math.round(Math.random()*10000000) + 1}`
+    return `H${Math.round(Math.random() * 10000000) + 1}`
 }
 
 
@@ -416,10 +414,10 @@ export const annotation_tag = {
             class: 'annotation-tag',
             'data-type': node.attrs.type
         }
-        if (node.attrs.key && node.attrs.key.length) {
+        if (node.attrs.key?.length) {
             attrs['data-key'] = node.attrs.key
         }
-        if (node.attrs.value && node.attrs.value.length) {
+        if (node.attrs.value?.length) {
             attrs['data-value'] = node.attrs.value
         }
         return ['span', attrs]
@@ -453,7 +451,7 @@ export const link = {
 }
 
 // :: NodeSpec A plain paragraph textblock. Represented in the DOM
-  // as a `<p>` element.
+// as a `<p>` element.
 export const paragraph = {
     group: "block",
     content: "inline*",
@@ -524,7 +522,7 @@ export const horizontal_rule = {
 }
 
 export const randomAnchorId = () => {
-    return `A${Math.round(Math.random()*10000000) + 1}`
+    return `A${Math.round(Math.random() * 10000000) + 1}`
 }
 
 export const anchor = {
@@ -681,12 +679,12 @@ function parseFormatList(str) {
     try {
         formatList = JSON.parse(str)
     } catch (error) {
-       return []
-   }
-   if (!Array.isArray(formatList)) {
-       return []
-   }
-   return formatList.filter(format => typeof(format)==='string') // ensure there are only strings in list
+        return []
+    }
+    if (!Array.isArray(formatList)) {
+        return []
+    }
+    return formatList.filter(format => typeof(format) === 'string') // ensure there are only strings in list
 }
 
 export const format_change = {
