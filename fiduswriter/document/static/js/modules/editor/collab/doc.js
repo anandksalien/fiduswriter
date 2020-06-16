@@ -254,7 +254,6 @@ export class ModCollabDoc {
                 this.mod.editor.mod.db.bibDB.unsentEvents().length ||
                 this.mod.editor.mod.db.imageDB.unsentEvents().length
             ) {
-                console.log("Calling send to collabs")
                 this.disableDiffSending()
                 const stepsToSend = sendableSteps(this.mod.editor.view
                         .state),
