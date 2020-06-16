@@ -274,52 +274,77 @@ export class Editor {
                         return // user navigated away.
                     }
                     switch (data.type) {
-                        case 'chat':
-                            this.mod.collab.chat.newMessage(data)
-                            break
-                        case 'connections':
-                            this.mod.collab.updateParticipantList(data.participant_list)
-                            break
-                        case 'styles':
-                            this.mod.documentTemplate.setStyles(data.styles)
-                            break
-                        case 'doc_data':
-                            this.mod.collab.doc.receiveDocument(data)
-                            break
-                        case 'confirm_version':
-                            this.mod.collab.doc.cancelCurrentlyCheckingVersion()
-                            if (data["v"] !== this.docInfo.version) {
-                                this.mod.collab.doc.checkVersion()
-                                return
-                            }
-                            this.mod.collab.doc.enableDiffSending()
-                            break
-                        case 'selection_change':
-                            this.mod.collab.doc.cancelCurrentlyCheckingVersion()
-                            if (data["v"] !== this.docInfo.version) {
-                                this.mod.collab.doc.checkVersion()
-                                return
-                            }
-                            this.mod.collab.doc.receiveSelectionChange(data)
-                            break
-                        case 'diff':
-                            if (data["cid"] === this.client_id) {
-                                // The diff origins from the local user.
-                                this.mod.collab.doc.confirmDiff(data["rid"])
-                                return
-                            }
-                            if (data["v"] !== this.docInfo.version) {
-                                this.mod.collab.doc.checkVersion()
-                                return
-                            }
-                            this.mod.collab.doc.receiveFromCollaborators(data)
-                            break
-                        case 'confirm_diff':
+                    case 'chat':
+                        this.mod.collab.chat.newMessage(data)
+                        break
+                    case 'connections':
+                        this.mod.collab.updateParticipantList(data.participant_list)
+                        break
+                    case 'styles':
+                        this.mod.documentTemplate.setStyles(data.styles)
+                        break
+                    case 'doc_data':
+                        this.mod.collab.doc.receiveDocument(data)
+                        break
+                    case 'confirm_version':
+                        this.mod.collab.doc.cancelCurrentlyCheckingVersion()
+                        if (data["v"] !== this.docInfo.version) {
+                            this.mod.collab.doc.checkVersion()
+                            return
+                        }
+                        this.mod.collab.doc.enableDiffSending()
+                        break
+                    case 'selection_change':
+                        this.mod.collab.doc.cancelCurrentlyCheckingVersion()
+                        if (data["v"] !== this.docInfo.version) {
+                            this.mod.collab.doc.checkVersion()
+                            return
+                        }
+                        this.mod.collab.doc.receiveSelectionChange(data)
+                        break
+                    case 'diff':
+                        if (data["cid"] === this.client_id) {
+                            // The diff origins from the local user.
                             this.mod.collab.doc.confirmDiff(data["rid"])
-                            break
-                        case 'reject_diff':
-                            this.mod.collab.doc.rejectDiff(data["rid"])
-                            break
+                            return
+                        }
+                        if (data["v"] !== this.docInfo.version) {
+                            this.mod.collab.doc.checkVersion()
+                            return
+                        }
+                        this.mod.collab.doc.receiveFromCollaborators(data)
+                        break
+                    case 'confirm_diff':
+                        this.mod.collab.doc.confirmDiff(data["rid"])
+                        break
+                    case 'reject_diff':
+                        this.mod.collab.doc.rejectDiff(data["rid"])
+                        break
+                    }
+                },
+                failedAuth: () => {
+                    if (this.view.state.plugins.length && sendableSteps(this.view.state) && this.ws.connectionCount > 0) {
+                        this.ws.online = false // To avoid Websocket trying to reconnect.
+                        new ExportFidusFile(
+                            this.getDoc(),
+                            this.mod.db.bibDB,
+                            this.mod.db.imageDB
+                        )
+                        const sessionDialog = new Dialog({
+                            title:gettext('Session Expired'),
+                            body:gettext(' Your Session expired while you were offline. So we have downloaded the version of the document you were editing. Please consider importing it into a new document '),
+                            buttons:[{
+                                text:gettext('Proceed to Login page'),
+                                classes:'fw-dark',
+                                click:()=>{
+                                    window.location.href = '/'
+                                }
+                            }]
+                        })
+                        sessionDialog.open()
+                        sessionDialog.dialogEl.childNodes[1].childNodes[3].style.display = 'none' // Make the dialog non dismissable
+                    } else {
+                        window.location.href = '/'
                     }
                 },
                 failedAuth: () => {
@@ -489,22 +514,16 @@ export class Editor {
 
     // Collect all components of the current doc. Needed for saving and export
     // filters
-    getDoc(options={}) {
-        let pmArticle
-        if (this.ws.connected) {
-            pmArticle = options.changes === 'acceptAllNoInsertions' ?
-            acceptAllNoInsertions(this.docInfo.confirmedDoc).firstChild :
-            this.docInfo.confirmedDoc.firstChild
-        } else {
-            pmArticle = options.changes === 'acceptAllNoInsertions' ?
-            acceptAllNoInsertions(this.view.docView.node).firstChild :
-            this.view.docView.node.firstChild
-        }
+    getDoc(options = {}) {
+        const doc = window.isOffline ? this.view.docView.node : this.docInfo.confirmedDoc
+        const pmArticle = options.changes === 'acceptAllNoInsertions' ?
+            acceptAllNoInsertions(doc).firstChild :
+            doc.firstChild
 
         let title = ""
         pmArticle.firstChild.forEach(
             child => {
-                if (!child.marks.find(mark => mark.type.name==='deletion')) {
+                if (!child.marks.find(mark => mark.type.name === 'deletion')) {
                     title += child.textContent
                 }
             }
@@ -534,7 +553,7 @@ export class Editor {
                 view = this.view
             } else {
                 const anchorMark = node.marks.find(mark => mark.type.name === 'anchor')
-                if (anchorMark && anchorMark.attrs.id === id) {
+                if (anchorMark?.attrs.id === id) {
                     foundPos = pos + 1
                     view = this.view
                 }
@@ -550,7 +569,7 @@ export class Editor {
                     view = this.mod.footnotes.fnEditor.view
                 } else {
                     const anchorMark = node.marks.find(mark => mark.type.name === 'anchor')
-                    if (anchorMark && anchorMark.attrs.id === id) {
+                    if (anchorMark?.attrs.id === id) {
                         foundPos = pos + 1
                         view = this.mod.footnotes.fnEditor.view
                     }
