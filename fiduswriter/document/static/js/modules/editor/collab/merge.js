@@ -459,7 +459,7 @@ export class Merge {
                 tr.steps.forEach((step, index)=>{
                     if (step.from >= change.fromB && step.to <= change.toB && step instanceof ReplaceStep && !steps_involved.includes(index)) {
                         const Step1 = step.toJSON()
-                        if (Step1.slice && Step1.slice.content.length == 1 && (Step1.slice.content[0].type === "footnote" || Step1.slice.content[0].type === "citation")) {
+                        if (Step1.slice && Step1.from !== Step1.to && Step1.slice.content.length == 1 && (Step1.slice.content[0].type === "footnote" || Step1.slice.content[0].type === "citation")) {
                             steps_involved.push(index)
                         }
                     } else if (step.from >= change.fromB && step.to <= change.toB && step instanceof AddMarkStep && !steps_involved.includes(index)) {
