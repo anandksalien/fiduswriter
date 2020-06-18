@@ -593,10 +593,11 @@ export class Merge {
                 offset += docNodeOffset
                 attrs = Object.assign({}, child.attrs)
                 attrs.hidden = false
-                unHideSectionTr.setNodeMarkup(offset, false, attrs).setMeta('settings', true)
+                unHideSectionTr.setNodeMarkup(offset, false, attrs)
                 offset = 1
             }
         })
+        unHideSectionTr.setMeta("notrack", true).setMeta('mapTracked', true)
         view.dispatch(unHideSectionTr)
     }
 
