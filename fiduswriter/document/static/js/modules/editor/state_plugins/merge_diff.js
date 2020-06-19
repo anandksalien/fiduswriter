@@ -5,6 +5,19 @@ import {Mapping} from "prosemirror-transform"
 
 const key = new PluginKey('mergeDiff')
 
+export const checkPresenceOfDiffMark = function(doc, from, to, editor) {
+    let diffAttrPresent = false
+    if (doc.rangeHasMark(from, to, editor.schema.marks.DiffMark)) {
+        return true
+    }
+    doc.nodesBetween(from, to, (node, _pos)=>{
+        if (node.attrs.diffdata && node.attrs.diffdata.length > 0) {
+            diffAttrPresent = true
+        }
+    })
+    return diffAttrPresent
+}
+
 export const updateMarkData = function(tr) {
     // Update the range inside the marks !!
     const initialdiffMap = tr.getMeta('initialDiffMap')

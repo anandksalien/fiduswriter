@@ -9,7 +9,8 @@ import {
     Mapping,
     AddMarkStep,
     RemoveMarkStep,
-    ReplaceStep
+    ReplaceStep,
+    ReplaceAroundStep
 } from "prosemirror-transform"
 import {
     showSystemMessage,
@@ -27,7 +28,8 @@ import {
 import {
     diffPlugin,
     removeMarks,
-    updateMarkData
+    updateMarkData,
+    checkPresenceOfDiffMark
 } from "../state_plugins/merge_diff"
 import {
     FootnoteView
@@ -222,7 +224,9 @@ export class Merge {
     findNotTrackedSteps(tr, trackedSteps) {
         const nonTrackedSteps = []
         tr.steps.forEach((step, index)=>{
-            if (!trackedSteps.includes(index)) {
+            // mark steps other than replace steps as not tracked if not tracked by changeset
+            // these steps should effectively only be the node attrs change steps.
+            if (!trackedSteps.includes(index) && (step instanceof ReplaceAroundStep || step instanceof AddMarkStep || step instanceof RemoveMarkStep)) {
                 nonTrackedSteps.push(step)
             }
         })
@@ -474,7 +478,8 @@ export class Merge {
                 const insertionMark = this.mod.editor.schema.marks.DiffMark.create({diff:insertionClass, steps:JSON.stringify(steps_involved), from:change.fromB, to:change.toB})
                 insertionMarksTr.addMark(change.fromB, change.toB, insertionMark)
                 this.markBlockDiffs(insertionMarksTr, change.fromB, change.toB, insertionClass, steps_involved)
-                stepsTrackedByChangeset = stepsTrackedByChangeset.concat(steps_involved)
+                if (checkPresenceOfDiffMark(insertionMarksTr.doc, change.fromB, change.toB, this.mod.editor))
+                    stepsTrackedByChangeset = stepsTrackedByChangeset.concat(steps_involved)
             } if (change.deleted.length > 0) {
                 let steps_involved = []
                 change.deleted.forEach(deletion=>steps_involved.push(parseInt(deletion.data.step)))
@@ -484,7 +489,8 @@ export class Merge {
                 const deletionMark = this.mod.editor.schema.marks.DiffMark.create({diff:deletionClass, steps:JSON.stringify(steps_involved), from:change.fromA, to:change.toA})
                 deletionMarksTr.addMark(change.fromA, change.toA, deletionMark)
                 this.markBlockDiffs(deletionMarksTr, change.fromA, change.toA, deletionClass, steps_involved)
-                stepsTrackedByChangeset = stepsTrackedByChangeset.concat(steps_involved)
+                if (checkPresenceOfDiffMark(deletionMarksTr.doc, change.fromA, change.toA, this.mod.editor))
+                    stepsTrackedByChangeset = stepsTrackedByChangeset.concat(steps_involved)
             }
         })
 
