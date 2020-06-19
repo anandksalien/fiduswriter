@@ -527,12 +527,12 @@ class FunctionalOfflineTests(LiveTornadoTestCase, EditorHelper):
         # Check that the html export works fine!
         # Click on the menu
         self.driver.find_element_by_xpath(
-            '//*[@id="header-navigation"]/div[2]/span'
+            "//span[contains(@title,'Export of the document contents')]"
         ).click()
 
         # Click on the HTML export
         self.driver.find_element_by_xpath(
-            '//*[@id="header-navigation"]/div[2]/div/ul/li[1]/span'
+            "//span[contains(@title,'Export the document to an HTML file.')]"
         ).click()
 
         # Check that the alert box is displayed.
@@ -545,12 +545,13 @@ class FunctionalOfflineTests(LiveTornadoTestCase, EditorHelper):
 
         # Click on the file menu
         self.driver.find_element_by_xpath(
-            '//*[@id="header-navigation"]/div[1]/span'
+            "//span[contains(@title,'File handling')]"
         ).click()
 
         # Click on the Print PDF button
         self.driver.find_element_by_xpath(
-            '//*[@id="header-navigation"]/div[1]/div/ul/li[7]/span'
+            "//span[contains(@title,'Either print or" +
+            " create a PDF using your browser print dialog.')]"
         ).click()
 
         # Check that the alert box is displayed.
@@ -585,18 +586,19 @@ class FunctionalOfflineTests(LiveTornadoTestCase, EditorHelper):
 
         # Check the share and create revision buttons are disabled.
         file_menu = self.driver.find_element_by_xpath(
-            '//*[@id="header-navigation"]/div[1]/span'
+            "//span[contains(@title,'File handling')]"
         )
         file_menu.click()
 
         share_button = self.driver.find_element_by_xpath(
-            '//*[@id="header-navigation"]/div[1]/div/ul/li[1]/span'
+            "//span[contains(@title,'Share the document with other users.')]"
         )
         share_button_classes = share_button.get_attribute("class").split(' ')
         self.assertEqual('disabled' in share_button_classes, True)
 
         save_revision_button = self.driver.find_element_by_xpath(
-            '//*[@id="header-navigation"]/div[1]/div/ul/li[3]/span'
+            "//span[contains(@title,'Save a revision of " +
+            "the current document.')]"
         )
         save_revision_button_classes = save_revision_button.get_attribute(
             "class"
@@ -606,12 +608,13 @@ class FunctionalOfflineTests(LiveTornadoTestCase, EditorHelper):
         # Check that the EPUB, LaTex and JATS exports are disabled
         # when user is offline.
         export_menu = self.driver.find_element_by_xpath(
-            '//*[@id="header-navigation"]/div[2]/span'
+            "//span[contains(@title,'Export of the document contents')]"
         )
         export_menu.click()
 
         epub_export_button = self.driver.find_element_by_xpath(
-            '//*[@id="header-navigation"]/div[2]/div/ul/li[2]/span'
+            "//span[contains(@title,'Export the document to " +
+            "an Epub electronic reader file.')]"
         )
         epub_export_button_classes = epub_export_button.get_attribute(
             "class"
@@ -619,7 +622,7 @@ class FunctionalOfflineTests(LiveTornadoTestCase, EditorHelper):
         self.assertEqual('disabled' in epub_export_button_classes, True)
 
         latex_export_button = self.driver.find_element_by_xpath(
-            '//*[@id="header-navigation"]/div[2]/div/ul/li[3]/span'
+            "//span[contains(@title,'Export the document to an LaTeX file.')]"
         )
         latex_export_button_classes = latex_export_button.get_attribute(
             "class"
@@ -627,7 +630,9 @@ class FunctionalOfflineTests(LiveTornadoTestCase, EditorHelper):
         self.assertEqual('disabled' in latex_export_button_classes, True)
 
         jats_export_button = self.driver.find_element_by_xpath(
-            '//*[@id="header-navigation"]/div[2]/div/ul/li[4]/span'
+            "//span[contains(@title,'Export the document to a Journal" +
+            " Archiving and Interchange Tag Library NISO JATS Version 1.2 " +
+            "file.')]"
         )
         jats_export_button_classes = jats_export_button.get_attribute(
             "class"
@@ -636,12 +641,12 @@ class FunctionalOfflineTests(LiveTornadoTestCase, EditorHelper):
 
         # Check that the Switching between styles is disabled.
         settings_menu = self.driver.find_element_by_xpath(
-            '//*[@id="header-navigation"]/div[3]/span'
+            "//span[contains(@title,'Configure settings of this document.')]"
         )
         settings_menu.click()
 
         doc_style_button = self.driver.find_element_by_xpath(
-            '//*[@id="header-navigation"]/div[3]/div/ul/li[3]/span'
+            "//span[contains(@title,'Choose your preferred document style.')]"
         )
         doc_style_button_classes = doc_style_button.get_attribute(
             "class"
@@ -694,5 +699,41 @@ class FunctionalOfflineTests(LiveTornadoTestCase, EditorHelper):
 
         # Check that the image upload threw an error/alert.
         self.driver.implicitly_wait(2)
+        alert_element = self.driver.find_element_by_class_name('alerts-error')
+        self.assertEqual(alert_element.is_displayed(), True)
+
+    def test_indexedDB(self):
+        """
+        Test one client going offline after logging in.
+        Test that the documents overview page is
+        rendered from indexed DB when the user is
+        offline.
+        """
+        # Load the documents overview page
+        self.driver.get(self.live_server_url)
+
+        # Go offline
+        WebDriverWait(self.driver, self.wait_time).until(
+            EC.presence_of_element_located((By.CLASS_NAME, 'fw-contents'))
+        )
+        self.driver.execute_script('window.theApp.ws.goOffline()')
+
+        # Click the documents overview page button to see
+        # if it's loaded from indexed DB
+        doc_overview_menu = self.driver.find_element_by_xpath(
+            "//a[contains(@title,'edit documents')]"
+        )
+        doc_overview_menu.click()
+
+        # Check the document table is rendered even when offline!
+        WebDriverWait(self.driver, self.wait_time).until(
+            EC.presence_of_element_located((By.CLASS_NAME, 'fw-contents'))
+        )
+        doc_row = self.driver.find_element_by_xpath(
+            "//a[@href='/document/"+str(self.doc.id)+"/']"
+        )
+        self.assertEqual(doc_row.is_displayed(), True)
+
+        # Check that the alert regarding offline is shown.
         alert_element = self.driver.find_element_by_class_name('alerts-error')
         self.assertEqual(alert_element.is_displayed(), True)
