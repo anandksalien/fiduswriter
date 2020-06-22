@@ -141,8 +141,10 @@ export class ModCollabDoc {
                 lostTr.steps.map(_step => 'remote')
             ).setMeta('remote', true))
 
-            const lostChangeSet = new changeSet(lostTr)
-            const conflicts = lostChangeSet.findConflicts(unconfirmedTr, lostTr)
+            // We split the complex steps that delete and insert into simple steps so that findinfg conflicts is more pronounced.
+            const modifiedLostTr = this.merge.modifyTr(lostTr)
+            const lostChangeSet = new changeSet(modifiedLostTr)
+            const conflicts = lostChangeSet.findConflicts(unconfirmedTr, modifiedLostTr)
             // Set the version
             this.mod.editor.docInfo.version = data.doc.v
 

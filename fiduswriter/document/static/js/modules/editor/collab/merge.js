@@ -202,6 +202,7 @@ export class Merge {
     applyChangesToEditor(tr, onlineDoc) {
         const OnlineStepsLost = recreateTransform(onlineDoc, this.mod.editor.view.state.doc)
         const onlineStepsLostChangeset = new changeSet(OnlineStepsLost)
+        tr = this.modifyTr(tr) // Split complex steps that insert and delete into simple insertions and deletion steps.
         const conflicts = onlineStepsLostChangeset.findConflicts(tr, OnlineStepsLost)
         if (conflicts.length > 0) {
             this.openDiffEditors(onlineDoc, tr.doc, OnlineStepsLost.doc, tr, OnlineStepsLost)
@@ -347,7 +348,8 @@ export class Merge {
             text: " Help ",
             classes: 'fw-orange',
             click: () => {
-                this.mergeHelpDialog.open()
+                const helpDialog = new mergeHelpDialog()
+                helpDialog.open()
             }
         }, {
             text: "Merge Complete",
@@ -619,7 +621,6 @@ export class Merge {
 
         this.mergeDialog  = this.createMergeDialog(offlineTr, onlineTr, onlineDoc)
         this.mergeDialog.open()
-        this.mergeHelpDialog = new mergeHelpDialog()
         onlineTr = this.modifyTr(onlineTr)
         offlineTr = this.modifyTr(offlineTr)
         this.offlineTr = offlineTr
