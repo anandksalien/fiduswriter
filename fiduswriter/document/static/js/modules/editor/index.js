@@ -347,7 +347,7 @@ export class Editor {
                     } else {
                         window.location.href = '/'
                     }
-                },
+                }
             })
             this.render()
             activateWait(true)

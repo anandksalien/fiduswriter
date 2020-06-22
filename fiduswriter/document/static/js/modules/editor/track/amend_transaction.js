@@ -206,6 +206,7 @@ export function trackedTransaction(tr, state, user, approved, date) {
                 )
                 // We condense it down to a single replace step.
                 const condensedStep = new ReplaceStep(newStep.from, newStep.to, trTemp.doc.slice(newStep.from, mappedNewStepTo))
+
                 newTr.step(condensedStep)
                 const mirrorIndex = map.maps.length - 1
                 map.appendMap(condensedStep.getMap(), mirrorIndex)

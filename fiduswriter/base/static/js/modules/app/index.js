@@ -110,7 +110,7 @@ export class App {
     }
 
     isOffline() {
-        return !navigator.onLine || (this.ws?.ws?.readyState > 0 && !this.ws?.connected)
+        return !navigator.onLine || (this.ws?.connectionCount > 0 && !this.ws?.connected)
     }
 
     installServiceWorker() {
