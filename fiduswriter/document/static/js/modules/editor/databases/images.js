@@ -83,7 +83,7 @@ export class ModImageDB {
             } else {
                 // If image is not present in both the userImage DB and docDB we can safely assume that we have to upload again.
                 this.reUploadImage(id, this.db[id].image, this.db[id].title, this.db[id].copyright).then(
-                    ({id, _new_id})=>delete this.db[id],
+                    ({id, _newId})=>delete this.db[id],
                     (id) => {
                         delete this.db[id]
                         const transaction = this.mod.editor.view.state.tr
@@ -126,7 +126,7 @@ export class ModImageDB {
                                     this.mod.editor.view.dispatch(transaction)
                                 }
                             })
-                            resolve({id:id, new_id:newId})
+                            resolve({id:id, newId:newId})
                         },
                         _error => reject(id),
                     )

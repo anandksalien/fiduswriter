@@ -102,11 +102,12 @@ export class Merge {
             [searchPlugin],
             [clipboardPlugin, () => ({editor: this.mod.editor, viewType: 'main'})]
         ]
+        this.imageDataModified = {}
     }
 
     updateDB(doc, data) {
-        const usedImages = [],
-            usedBibs = []
+        let usedImages = []
+        const usedBibs = []
         const footnoteFind = (node, usedImages, usedBibs) => {
             if (node.name === 'citation') {
                 node.attrs.references.forEach(ref => usedBibs.push(parseInt(ref.id)))
@@ -138,6 +139,8 @@ export class Merge {
         const oldImageDB = this.mod.editor.mod.db.imageDB.db
         let imageUploadFailDialogShown = false
         this.mod.editor.mod.db.imageDB.setDB(data.doc.images)
+        usedImages = new Set(usedImages)
+        usedImages = Array.from(usedImages)
         usedImages.forEach(id => {
             if (!this.mod.editor.mod.db.imageDB.db[id] && oldImageDB[id]) {
                 // If the image was uploaded by the offline user we know that he may not have deleted it so we can resend it normally
@@ -147,23 +150,26 @@ export class Merge {
                 } else {
                     // If the image was uploaded by someone else , to set the image we have to reupload it again as there is backend check to associate who can add an image with the image owner.
                     this.mod.editor.mod.db.imageDB.reUploadImage(id, oldImageDB[id].image, oldImageDB[id].title, oldImageDB[id].copyright).then(
-                        ({id, new_id})=>{
+                        ({id, newId})=>{
+                            this.imageDataModified[id] = newId
                             // Update the image node if there are any re uploaded images.
                             this.mergeView1.state.doc.descendants((node, pos) => {
                                 if (node.type.name === 'figure' && node.attrs.image == id) {
                                     const attrs = Object.assign({}, node.attrs)
-                                    attrs["image"] = new_id
+                                    attrs["image"] = newId
                                     const nodeType = this.mergeView1.state.schema.nodes['figure']
                                     const transaction = this.mergeView1.state.tr.setNodeMarkup(pos, nodeType, attrs)
+                                    transaction.setMeta('mapTracked', true)
                                     this.mergeView1.dispatch(transaction)
                                 }
                             })
                             this.mergeView2.state.doc.descendants((node, pos) => {
                                 if (node.type.name === 'figure' && node.attrs.image == id) {
                                     const attrs = Object.assign({}, node.attrs)
-                                    attrs["image"] = new_id
+                                    attrs["image"] = newId
                                     const nodeType = this.mergeView2.state.schema.nodes['figure']
                                     const transaction = this.mergeView2.state.tr.setNodeMarkup(pos, nodeType, attrs)
+                                    transaction.setMeta('mapTracked', true)
                                     this.mergeView2.dispatch(transaction)
                                 }
                             })
@@ -176,6 +182,7 @@ export class Merge {
                                     attrs["image"] = false
                                     const nodeType = this.mergeView1.state.schema.nodes['figure']
                                     const transaction = this.mergeView1.state.tr.setNodeMarkup(pos, nodeType, attrs)
+                                    transaction.setMeta('mapTracked', true)
                                     this.mergeView1.dispatch(transaction)
                                 }
                             })
@@ -185,6 +192,7 @@ export class Merge {
                                     attrs["image"] = false
                                     const nodeType = this.mergeView2.state.schema.nodes['figure']
                                     const transaction = this.mergeView2.state.tr.setNodeMarkup(pos, nodeType, attrs)
+                                    transaction.setMeta('mapTracked', true)
                                     this.mergeView2.dispatch(transaction)
                                 }
                             })
@@ -306,6 +314,7 @@ export class Merge {
         this.Dep = false
         this.offStepsNotTracked = false
         this.onStepsNotTracked = false
+        this.imageDataModified = {}
 
         this.applyChangesToEditor(recreateTransform(onlineDoc, mergedDoc), onlineDoc)
 
@@ -418,6 +427,14 @@ export class Merge {
                             Date.now() - this.mod.editor.clientTimeAdjustment
                         )
                     }
+                    mapTr.doc.descendants((node, pos) => {
+                        if (node.type.name === 'figure' && Object.keys(this.imageDataModified).includes(String(node.attrs.image))) {
+                            const attrs = Object.assign({}, node.attrs)
+                            attrs["image"] = this.imageDataModified[String(node.attrs.image)]
+                            const nodeType = this.mergeView1.state.schema.nodes['figure']
+                            mapTr.setNodeMarkup(pos, nodeType, attrs)
+                        }
+                    })
                     const newState = editorView.state.apply(mapTr)
                     editorView.updateState(newState)
                     this.renderCitation(editorView, elementId)
@@ -563,8 +580,8 @@ export class Merge {
     modifyTr(tr) {
         const trState = EditorState.create({doc: tr.docs[0]})
         const newTr = trState.tr
-
-        tr.steps.forEach((step, _index)=>{
+        for (let index = 0; index < tr.steps.length ; index++) {
+            const step = tr.steps[index]
             if (step instanceof ReplaceStep && step.from !== step.to) {
                 const modifiedStep = step.slice.size ? new ReplaceStep(
                     step.to, // We insert all the same steps, but with "from"/"to" both set to "to" in order not to delete content. Mapped as needed.
@@ -577,19 +594,21 @@ export class Merge {
                     if (newTr.maybeStep(modifiedStep).failed) {
                         return tr
                     }
-                    if (newTr.maybeStep(new ReplaceStep(step.from, step.to, Slice.empty, step.structure)).failed) {
+                    if (newTr.maybeStep(new ReplaceStep(step.from, modifiedStep.getMap().map(step.to), Slice.empty, step.structure)).failed) {
                         return tr
                     }
                 } else {
-                    if (newTr.maybeStep(step).failed)
+                    if (newTr.maybeStep(step).failed) {
                         return tr
+                    }
                 }
 
             } else {
-                if (newTr.maybeStep(step).failed)
+                if (newTr.maybeStep(step).failed) {
                     return tr
+                }
             }
-        })
+        }
         return newTr
     }
 
