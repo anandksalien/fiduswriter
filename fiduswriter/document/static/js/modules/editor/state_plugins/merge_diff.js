@@ -6,6 +6,7 @@ import {Mapping} from "prosemirror-transform"
 const key = new PluginKey('mergeDiff')
 
 export const checkPresenceOfDiffMark = function(doc, from, to, editor) {
+    /* This function checks whether diff mark is present inside the given range */
     let diffAttrPresent = false
     if (doc.rangeHasMark(from, to, editor.schema.marks.DiffMark)) {
         return true
@@ -19,7 +20,9 @@ export const checkPresenceOfDiffMark = function(doc, from, to, editor) {
 }
 
 export const updateMarkData = function(tr, imageDataModified, view) {
-    // Update the range inside the marks !!
+    /* Update the range inside the marks and also if we have a image that
+    was reuploaded , then while accepting it into the middle editor,
+    update its attrs */
     const initialdiffMap = tr.getMeta('initialDiffMap')
     if (!initialdiffMap && (tr.steps.length > 0 || tr.docChanged)) {
         tr.doc.nodesBetween(
@@ -58,6 +61,8 @@ export const updateMarkData = function(tr, imageDataModified, view) {
 }
 
 export const removeMarks = function(view, from, to, mark, returnTr = false) {
+    /* This function removes all the diff marks in the given range or returns
+    a transaction that does this */
     const trackedTr = view.state.tr
     trackedTr.doc.nodesBetween(
         from,
@@ -93,7 +98,6 @@ export const diffPlugin = function(options) {
             markFound = {}
             const node = state.selection.$head.nodeBefore
             if (node  && node.attrs.diffdata && node.attrs.diffdata.length > 0) {
-                markFound['diff'] = node.attrs.diffdata[0].type
                 markFound['attrs'] = {}
                 markFound['attrs']['diff'] = node.attrs.diffdata[0].type
                 markFound['attrs']['from'] = node.attrs.diffdata[0].from
@@ -105,6 +109,8 @@ export const diffPlugin = function(options) {
     }
 
     function createHiglightDecoration(from, to, state) {
+        /* Creates a yellow coloured highlight decoration when the user
+        tries to look at a change */
         const inlineDeco = Decoration.inline(from, to, {class:'selected-dec'})
         const deco = []
         deco.push(inlineDeco)
@@ -126,6 +132,7 @@ export const diffPlugin = function(options) {
     }
 
     function getDecos(state) {
+        /* Creates PM deco for the change popup */
         const $head = state.selection.$head
         const currentMarks = [],
             diffMark = $head.marks().find(
@@ -164,6 +171,8 @@ export const diffPlugin = function(options) {
     }
 
     function acceptChanges(mark, editor, mergeView, originalView, tr) {
+        /* This is used to accept a change either from the offline/online version or
+        incase of deletion from the middle editor */
         try {
             const mergedDocMap = new Mapping()
             mergedDocMap.appendMapping(editor.mod.collab.doc.merge.mergedDocMap)
@@ -206,10 +215,13 @@ export const diffPlugin = function(options) {
     }
 
     function rejectChanges(view, diffMark, editor) {
+        /* This function is used to reject a change */
         removeMarks(view, diffMark.attrs.from, diffMark.attrs.to, editor.schema.marks.DiffMark)
     }
 
     function copyChange(view, from, to) {
+        /* when a certain change cannot be applied automatically,
+        we give users the ability to copy a change */
         const tr = view.state.tr
         const resolvedFrom = view.state.doc.resolve(from)
         const resolvedTo = view.state.doc.resolve(to)
@@ -239,6 +251,7 @@ export const diffPlugin = function(options) {
     }
 
     function createDropUp(diffMark, linkMark) {
+        /* The actual function that creates a drop up */
         const dropUp = document.createElement('span'),
             editor = options.editor, requiredPx = 10,
             tr = diffMark.attrs.diff.search('offline') != -1 ? editor.mod.collab.doc.merge.offlineTr : editor.mod.collab.doc.merge.onlineTr

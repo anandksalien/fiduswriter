@@ -85,9 +85,10 @@ export class Merge {
         this.mergeView1 = false
         this.mergeView2 = false
         this.mergeView3 = false
-        this.mergedDocMap = false
-        this.offlineTr = false
-        this.onlineTr = false
+        this.mergedDocMap = false // the maps of the middle editor ,used for applying steps automatically
+        this.offlineTr = false // The online transaction
+        this.onlineTr = false // The offline Transaction
+        this.imageDataModified = {} // To hold data related to re-uploaded images.
         this.diffPlugin = [
             [diffPlugin, () => ({editor:this.mod.editor})],
             [keymap, () => buildEditorKeymap(this.mod.editor.schema)],
@@ -102,10 +103,11 @@ export class Merge {
             [searchPlugin],
             [clipboardPlugin, () => ({editor: this.mod.editor, viewType: 'main'})]
         ]
-        this.imageDataModified = {}
     }
 
     updateDB(doc, data) {
+        /* Used to update the image,bib DB and update the doc incase if missing/lost images
+        (update the image data with re-uploaded images) */
         let usedImages = []
         const usedBibs = []
         const footnoteFind = (node, usedImages, usedBibs) => {
@@ -208,6 +210,7 @@ export class Merge {
     }
 
     applyChangesToEditor(tr, onlineDoc) {
+        /* Applies the change from diff editor to main editor */
         const OnlineStepsLost = recreateTransform(onlineDoc, this.mod.editor.view.state.doc)
         const onlineStepsLostChangeset = new changeSet(OnlineStepsLost)
         tr = this.modifyTr(tr) // Split complex steps that insert and delete into simple insertions and deletion steps.
@@ -231,6 +234,7 @@ export class Merge {
     }
 
     findNotTrackedSteps(tr, trackedSteps) {
+        /* Find steps not tracked by PM , usually steps that cause change of attrs */
         const nonTrackedSteps = []
         tr.steps.forEach((step, index)=>{
             // mark steps other than replace steps as not tracked if not tracked by changeset
@@ -243,9 +247,7 @@ export class Merge {
     }
 
     markBlockDiffs(tr, from, to, difftype, steps_involved) {
-        /*
-        This Function is used to add diff data to Block Elements.
-        */
+        /* This Function is used to add diff data to Block Elements. */
         tr.doc.nodesBetween(
             from,
             to,
@@ -266,6 +268,7 @@ export class Merge {
     }
 
     startMerge(offlineTr, onlineTr, onlineDoc) {
+        /* start the merge process of moving changes to the editor */
         // Remove all diff related marks
         removeMarks(this.mergeView2, 0, this.mergeView2.state.doc.content.size, this.mod.editor.schema.marks.DiffMark)
 
@@ -320,6 +323,7 @@ export class Merge {
     }
 
     checkResolution() {
+        /* To Check if all the diffs are resolved */
         const offlineVersionDoc = this.mergeView1.state.doc,
             onlineVersionDoc = this.mergeView3.state.doc,
             mergedVersionDoc = this.mergeView2.state.doc
@@ -395,6 +399,7 @@ export class Merge {
     }
 
     bindEditorView(elementId, doc) {
+        /* Binds the editor view */
         const editor = this.mod.editor
         const plugins = this.diffPlugin.map(plugin=>{
             if (plugin[1]) {
@@ -460,6 +465,7 @@ export class Merge {
     }
 
     markChangesinDiffEditor(changeset, insertionView, deletionView, insertionClass, deletionClass, tr) {
+        /* This marks all the changes in the diff editor */
         // Mark the insertions in insertion View & deletions in deletionView
         const insertionMarksTr = insertionView.state.tr
         const deletionMarksTr = deletionView.state.tr
@@ -572,6 +578,8 @@ export class Merge {
     }
 
     modifyTr(tr) {
+        /* This splits complex insertion & Deletion steps into simple insertion and deletion
+        steps */
         if (tr.docChanged && tr.docs.length > 0) {
             const trState = EditorState.create({doc: tr.docs[0]})
             const newTr = trState.tr
@@ -627,12 +635,14 @@ export class Merge {
     }
 
     unHideSectionsinAllDoc() {
+        /* Unhide all the optional sections */
         this.unHideSections(this.mergeView1)
         this.unHideSections(this.mergeView2)
         this.unHideSections(this.mergeView3)
     }
 
     openDiffEditors(cpDoc, offlineDoc, onlineDoc, offlineTr, onlineTr) {
+        /* Create the diff editors */
         // Put a wait screen
         activateWait()
 
@@ -684,6 +694,7 @@ export class Merge {
     }
 
     autoMerge(unconfirmedTr, lostTr, data) {
+        /* This automerges documents incase of no conflicts */
         const toDoc = this.mod.editor.schema.nodeFromJSON({type:'doc', content:[
             data.doc.contents
         ]})
