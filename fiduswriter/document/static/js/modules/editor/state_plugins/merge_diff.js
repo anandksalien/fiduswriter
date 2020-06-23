@@ -18,7 +18,7 @@ export const checkPresenceOfDiffMark = function(doc, from, to, editor) {
     return diffAttrPresent
 }
 
-export const updateMarkData = function(tr) {
+export const updateMarkData = function(tr, imageDataModified, view) {
     // Update the range inside the marks !!
     const initialdiffMap = tr.getMeta('initialDiffMap')
     if (!initialdiffMap && (tr.steps.length > 0 || tr.docChanged)) {
@@ -38,6 +38,12 @@ export const updateMarkData = function(tr) {
                         const mark = tr.doc.type.schema.marks.DiffMark.create({diff:diffMark.diff, steps:diffMark.steps, from:from, to:to})
                         tr.addMark(pos, pos + node.nodeSize, mark)
                     }
+                }
+                if (node.type.name === 'figure' && Object.keys(imageDataModified).includes(String(node.attrs.image))) {
+                    const attrs = Object.assign({}, node.attrs)
+                    attrs["image"] = imageDataModified[String(node.attrs.image)]
+                    const nodeType = view.state.schema.nodes['figure']
+                    tr.setNodeMarkup(pos, nodeType, attrs)
                 }
                 if (node.attrs.diffdata && node.attrs.diffdata.length > 0) {
                     const diffdata = node.attrs.diffdata
@@ -72,7 +78,7 @@ export const removeMarks = function(view, from, to, mark, returnTr = false) {
     if (returnTr) {
         return trackedTr
     }
-    trackedTr.setMeta('initialDiffMap', true).setMeta('mapTracked', true)
+    trackedTr.setMeta('initialDiffMap', true).setMeta('mapAppended', true)
     trackedTr.setMeta('notrack', true)
     view.dispatch(trackedTr)
 }
@@ -135,14 +141,13 @@ export const diffPlugin = function(options) {
             const node = state.selection instanceof NodeSelection ? state.selection.node : state.selection.$head.parent
             const markFound = {}
             if (node && node.attrs.diffdata && node.attrs.diffdata.length > 0) {
-                markFound['image'] = true
                 markFound['attrs'] = {}
                 markFound['attrs']['diff'] = node.attrs.diffdata[0].type
                 markFound['attrs']['from'] = node.attrs.diffdata[0].from
                 markFound['attrs']['to'] = node.attrs.diffdata[0].to
                 markFound['attrs']['steps'] = JSON.stringify(node.attrs.diffdata[0].steps)
                 const startPos = $head.pos// position of block start.
-                const dom = createDropUp(markFound),
+                const dom = createDropUp(markFound, linkMark),
                     deco = Decoration.widget(startPos, dom)
                 const highlightDecos = createHiglightDecoration(markFound['attrs']["from"], markFound['attrs']["to"], state)
                 highlightDecos.push(deco)
@@ -191,7 +196,7 @@ export const diffPlugin = function(options) {
                     removeMarks(originalView, from, to, editor.schema.marks.DiffMark)
                 }
                 editor.mod.collab.doc.merge.mergedDocMap = mergedDocMap
-                insertionTr.setMeta('mapTracked', true)
+                insertionTr.setMeta('mapAppended', true)
                 insertionTr.setMeta('notrack', true)
                 mergeView.dispatch(insertionTr)
             }

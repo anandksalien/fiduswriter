@@ -159,7 +159,7 @@ export class Merge {
                                     attrs["image"] = newId
                                     const nodeType = this.mergeView1.state.schema.nodes['figure']
                                     const transaction = this.mergeView1.state.tr.setNodeMarkup(pos, nodeType, attrs)
-                                    transaction.setMeta('mapTracked', true)
+                                    transaction.setMeta('mapAppended', true)
                                     this.mergeView1.dispatch(transaction)
                                 }
                             })
@@ -169,7 +169,7 @@ export class Merge {
                                     attrs["image"] = newId
                                     const nodeType = this.mergeView2.state.schema.nodes['figure']
                                     const transaction = this.mergeView2.state.tr.setNodeMarkup(pos, nodeType, attrs)
-                                    transaction.setMeta('mapTracked', true)
+                                    transaction.setMeta('mapAppended', true)
                                     this.mergeView2.dispatch(transaction)
                                 }
                             })
@@ -182,7 +182,7 @@ export class Merge {
                                     attrs["image"] = false
                                     const nodeType = this.mergeView1.state.schema.nodes['figure']
                                     const transaction = this.mergeView1.state.tr.setNodeMarkup(pos, nodeType, attrs)
-                                    transaction.setMeta('mapTracked', true)
+                                    transaction.setMeta('mapAppended', true)
                                     this.mergeView1.dispatch(transaction)
                                 }
                             })
@@ -192,7 +192,7 @@ export class Merge {
                                     attrs["image"] = false
                                     const nodeType = this.mergeView2.state.schema.nodes['figure']
                                     const transaction = this.mergeView2.state.tr.setNodeMarkup(pos, nodeType, attrs)
-                                    transaction.setMeta('mapTracked', true)
+                                    transaction.setMeta('mapAppended', true)
                                     this.mergeView2.dispatch(transaction)
                                 }
                             })
@@ -317,7 +317,6 @@ export class Merge {
         this.imageDataModified = {}
 
         this.applyChangesToEditor(recreateTransform(onlineDoc, mergedDoc), onlineDoc)
-
     }
 
     checkResolution() {
@@ -413,28 +412,23 @@ export class Merge {
                     plugins:plugins,
                 }),
                 dispatchTransaction: tr => {
-                    const mapTracked = tr.getMeta('mapTracked')
-                    const notTrack = tr.getMeta('notrack')
-                    if (!mapTracked)
-                        this.mergedDocMap.appendMapping(tr.mapping)
-                    let mapTr = updateMarkData(tr)
-                    if (!notTrack) { // Track only manual insertions
-                        mapTr = trackedTransaction(
-                            mapTr,
-                            this.mergeView2.state,
-                            this.mod.editor.user,
-                            !this.mergeView2.state.doc.firstChild.attrs.tracked && this.mod.editor.docInfo.access_rights !== 'write-tracked',
-                            Date.now() - this.mod.editor.clientTimeAdjustment
-                        )
-                    }
-                    mapTr.doc.descendants((node, pos) => {
-                        if (node.type.name === 'figure' && Object.keys(this.imageDataModified).includes(String(node.attrs.image))) {
-                            const attrs = Object.assign({}, node.attrs)
-                            attrs["image"] = this.imageDataModified[String(node.attrs.image)]
-                            const nodeType = this.mergeView1.state.schema.nodes['figure']
-                            mapTr.setNodeMarkup(pos, nodeType, attrs)
+                    let mapTr = tr
+                    if (tr.docChanged) {
+                        const mapAppended = tr.getMeta('mapAppended')
+                        const noTrack = tr.getMeta('notrack')
+                        if (!mapAppended)
+                            this.mergedDocMap.appendMapping(tr.mapping)
+                        mapTr = updateMarkData(mapTr, this.imageDataModified, editorView)
+                        if (!noTrack) { // Track only manual insertions
+                            mapTr = trackedTransaction(
+                                mapTr,
+                                this.mergeView2.state,
+                                this.mod.editor.user,
+                                !this.mergeView2.state.doc.firstChild.attrs.tracked && this.mod.editor.docInfo.access_rights !== 'write-tracked',
+                                Date.now() - this.mod.editor.clientTimeAdjustment
+                            )
                         }
-                    })
+                    }
                     const newState = editorView.state.apply(mapTr)
                     editorView.updateState(newState)
                     this.renderCitation(editorView, elementId)
@@ -452,7 +446,7 @@ export class Merge {
                     plugins:plugins,
                 }),
                 dispatchTransaction: tr => {
-                    const mapTr = updateMarkData(tr)
+                    const mapTr = updateMarkData(tr, this.imageDataModified, editorView)
                     const newState = editorView.state.apply(mapTr)
                     editorView.updateState(newState)
                     this.renderCitation(editorView, elementId)
@@ -555,8 +549,8 @@ export class Merge {
         })
 
         // Dispatch the transactions
-        insertionMarksTr.setMeta('initialDiffMap', true).setMeta('mapTracked', true)
-        deletionMarksTr.setMeta('initialDiffMap', true).setMeta('mapTracked', true)
+        insertionMarksTr.setMeta('initialDiffMap', true).setMeta('mapAppended', true).setMeta('notrack', true)
+        deletionMarksTr.setMeta('initialDiffMap', true).setMeta('mapAppended', true).setMeta('notrack', true)
         insertionView.dispatch(insertionMarksTr)
         deletionView.dispatch(deletionMarksTr)
 
@@ -628,7 +622,7 @@ export class Merge {
                 offset = 1
             }
         })
-        unHideSectionTr.setMeta("notrack", true).setMeta('mapTracked', true)
+        unHideSectionTr.setMeta("notrack", true).setMeta('mapAppended', true)
         view.dispatch(unHideSectionTr)
     }
 
@@ -669,7 +663,7 @@ export class Merge {
             const attrs = Object.assign({}, article.attrs)
             attrs.tracked = true
             this.mergeView2.dispatch(
-                this.mergeView2.state.tr.setNodeMarkup(0, false, attrs).setMeta('notrack', true).setMeta('mapTracked', true)
+                this.mergeView2.state.tr.setNodeMarkup(0, false, attrs).setMeta('notrack', true).setMeta('mapAppended', true)
             )
         }
 
