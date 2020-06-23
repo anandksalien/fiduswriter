@@ -578,38 +578,42 @@ export class Merge {
     }
 
     modifyTr(tr) {
-        const trState = EditorState.create({doc: tr.docs[0]})
-        const newTr = trState.tr
-        for (let index = 0; index < tr.steps.length ; index++) {
-            const step = tr.steps[index]
-            if (step instanceof ReplaceStep && step.from !== step.to) {
-                const modifiedStep = step.slice.size ? new ReplaceStep(
-                    step.to, // We insert all the same steps, but with "from"/"to" both set to "to" in order not to delete content. Mapped as needed.
-                    step.to,
-                    step.slice,
-                    step.structure
-                ) : false
-                if (modifiedStep) {
-                    // If while breaking down any step the step fails , we return the original tr (we just split steps containing both insertions and deletions into simple steps which does just insertion/deletion. should not make a big difference.)
-                    if (newTr.maybeStep(modifiedStep).failed) {
-                        return tr
+        if (tr.docChanged && tr.docs.length > 0) {
+            const trState = EditorState.create({doc: tr.docs[0]})
+            const newTr = trState.tr
+            for (let index = 0; index < tr.steps.length ; index++) {
+                const step = tr.steps[index]
+                if (step instanceof ReplaceStep && step.from !== step.to) {
+                    const modifiedStep = step.slice.size ? new ReplaceStep(
+                        step.to, // We insert all the same steps, but with "from"/"to" both set to "to" in order not to delete content. Mapped as needed.
+                        step.to,
+                        step.slice,
+                        step.structure
+                    ) : false
+                    if (modifiedStep) {
+                        // If while breaking down any step the step fails , we return the original tr (we just split steps containing both insertions and deletions into simple steps which does just insertion/deletion. should not make a big difference.)
+                        if (newTr.maybeStep(modifiedStep).failed) {
+                            return tr
+                        }
+                        if (newTr.maybeStep(new ReplaceStep(step.from, step.to, Slice.empty, step.structure)).failed) {
+                            return tr
+                        }
+                    } else {
+                        if (newTr.maybeStep(step).failed) {
+                            return tr
+                        }
                     }
-                    if (newTr.maybeStep(new ReplaceStep(step.from, modifiedStep.getMap().map(step.to), Slice.empty, step.structure)).failed) {
-                        return tr
-                    }
+
                 } else {
                     if (newTr.maybeStep(step).failed) {
                         return tr
                     }
                 }
-
-            } else {
-                if (newTr.maybeStep(step).failed) {
-                    return tr
-                }
             }
+            return newTr
+        } else {
+            return tr
         }
-        return newTr
     }
 
     unHideSections(view) {

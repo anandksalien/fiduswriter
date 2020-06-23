@@ -160,7 +160,8 @@ export const diffPlugin = function(options) {
 
     function acceptChanges(mark, editor, mergeView, originalView, tr) {
         try {
-            const mergedDocMap = editor.mod.collab.doc.merge.mergedDocMap
+            const mergedDocMap = new Mapping()
+            mergedDocMap.appendMapping(editor.mod.collab.doc.merge.mergedDocMap)
             let insertionTr = mergeView.state.tr
             const from = mark.attrs.from
             const to = mark.attrs.to
@@ -189,6 +190,7 @@ export const diffPlugin = function(options) {
                 } else {
                     removeMarks(originalView, from, to, editor.schema.marks.DiffMark)
                 }
+                editor.mod.collab.doc.merge.mergedDocMap = mergedDocMap
                 insertionTr.setMeta('mapTracked', true)
                 insertionTr.setMeta('notrack', true)
                 mergeView.dispatch(insertionTr)
@@ -359,8 +361,11 @@ export const diffPlugin = function(options) {
                     const changePopUp = view.dom.querySelector('.drop-up-outer')
                     if (changePopUp) {
                         const bounding = changePopUp.getBoundingClientRect()
-                        if (bounding.right > (window.innerWidth || document.documentElement.clientWidth)) {
-                            changePopUp.style.left = '100px'
+                        const dialogBox = document.querySelector('#editor-merge-view')
+                        if (dialogBox) {
+                            if (bounding.right > dialogBox.offsetWidth || bounding.right > (window.innerWidth || document.documentElement.clientWidth)) {
+                                changePopUp.style.left = '100px'
+                            }
                         }
                     }
                 }
