@@ -97,7 +97,7 @@ export class WebSocketConnector {
             }${
                 this.url
             }` :
-            'ws://offline'
+            'wss://offline'
         this.ws = new window.WebSocket(url)
 
         this.ws.onmessage = event => {
