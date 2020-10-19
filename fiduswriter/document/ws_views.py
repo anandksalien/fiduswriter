@@ -27,6 +27,7 @@ from tornado.escape import json_encode
 # end settings_JSONPATCH
 
 logger = logging.getLogger(__name__)
+timer_logger = logging.getLogger('timer_logger')
 
 schema_json_path = os.path.join(
     settings.PROJECT_PATH,
@@ -413,6 +414,9 @@ class WebSocket(BaseWebSocketHandler):
             return
         if pv == dv:
             if settings.JSONPATCH:
+                # start the timer
+                json_start_time = time()
+
                 if "jd" in message:  # jd = json diff
                     try:
                         apply_patch(
@@ -438,11 +442,21 @@ class WebSocket(BaseWebSocketHandler):
                         self.unfixable()
                         self.send_message({'type': 'patch_error'})
                         return
+
+                    # end timer
+                    json_end_time = time()
+                    timer_logger.info(f'Method: JsonPatching Document title:{self.session["doc"].title} Time elapsed:{json_end_time-json_start_time} Diff:{message} ')
+
+
                     # The json diff is only needed by the python backend which
                     # does not understand the steps. It can therefore be
                     # removed before broadcast to other clients.
                     del message["jd"]
+
             elif "ds" in message:  # ds = document steps
+                # start timer
+                pro_py_start = time()
+
                 for s in message["ds"]:
                     step = Step.from_json(schema, s)
                     step_result = step.apply(self.session["node"])
@@ -455,6 +469,11 @@ class WebSocket(BaseWebSocketHandler):
                 self.session["doc"].content = self.session[
                     "node"
                 ].first_child.to_json()
+
+                # end timer
+                pro_py_end = time()
+                timer_logger.info(f'Method: Prosemirror-py Document title:{self.session["doc"].title} Time elapsed:{pro_py_end-pro_py_start} Diff:{message} ')
+
             self.session["doc"].diffs.append(message)
             self.session["doc"].diffs = self.session["doc"].diffs[
                 -self.history_length:

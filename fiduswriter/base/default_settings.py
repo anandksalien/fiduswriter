@@ -265,6 +265,12 @@ LOGGING = {
         'simple': {
             'format': '\033[22;32m%(levelname)s\033[0;0m %(message)s'
         },
+        'custom_format': {
+            'format':
+                    '%(levelname)s %(asctime)s %(name)s %(module)s %(filename)s %(funcName)s ' \
+                    '(%(lineno)d) %(process)d %(thread)d %(message)s'
+
+        }
     },
     'handlers': {
         'mail_admins': {
@@ -280,6 +286,12 @@ LOGGING = {
         'null': {
             'class': 'logging.NullHandler',
         },
+        'time_logger': {
+            'level': 'INFO',
+            'class': 'logging.handlers.WatchedFileHandler',
+            'filename': 'time.log',
+            'formatter': 'custom_format'
+        }
     },
     'loggers': {
         'django.request': {
@@ -299,7 +311,12 @@ LOGGING = {
         'tornado.access': {
             'handlers': ['null'],
             'propagate': False,
-        }
+        },
+        'timer_logger': {
+            'handlers': ['time_logger'],
+            'level': 'INFO',
+            'propagate': False,
+        },
     }
 }
 
