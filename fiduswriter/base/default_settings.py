@@ -200,7 +200,8 @@ BASE_INSTALLED_APPS = [
     'allauth.socialaccount',
     'avatar',
     'feedback',
-    'style'
+    'style',
+    'user_template_manager'
 ]
 # These are additional apps to be overriden by configuration.py
 INSTALLED_APPS = []
