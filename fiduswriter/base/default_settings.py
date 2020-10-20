@@ -313,7 +313,7 @@ LOGGING = {
             'propagate': False,
         },
         'timer_logger': {
-            'handlers': ['time_logger'],
+            'handlers': ['time_logger','console'],
             'level': 'INFO',
             'propagate': False,
         },
