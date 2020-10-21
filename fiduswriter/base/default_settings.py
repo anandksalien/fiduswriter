@@ -3,7 +3,7 @@ import os
 PORT = 8000
 
 # If you want to show debug messages, set DEBUG to True.
-DEBUG = True
+DEBUG = False
 SOURCE_MAPS = False
 
 # This determines whether the server is used for testing and will let the
@@ -362,3 +362,6 @@ SETUP_PAGE_PATH = os.path.join(SRC_PATH, 'base/setup_page/')
 # Deprecated and will be remove din the next minor version update after
 # Fidus Writer 3.9.
 JSONPATCH = False
+
+# Whether to create a service worker on production sites
+USE_SERVICE_WORKER = True
