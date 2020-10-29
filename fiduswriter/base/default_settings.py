@@ -292,13 +292,23 @@ LOGGING = {
             'class': 'logging.handlers.WatchedFileHandler',
             'filename': 'time.log',
             'formatter': 'custom_format'
+        },
+        'file': {
+            'level': 'INFO',
+            'class': 'logging.handlers.WatchedFileHandler',
+            'filename': 'error.log',
+            'formatter': 'verbose'
         }
     },
     'loggers': {
+        '':{
+            'handlers':['file'],
+            'level': 'INFO',
+        },
         'django.request': {
             'handlers': ['mail_admins'],
             'level': 'ERROR',
-            'propagate': True,
+            'propagate': False,
         },
         'django.security.DisallowedHost': {
             'handlers': ['null'],
